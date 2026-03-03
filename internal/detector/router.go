@@ -1,6 +1,7 @@
 package detector
 
 import (
+	"go/ast"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -12,12 +13,15 @@ type RouterKind string
 const (
 	RouterKindChi     RouterKind = "chi"
 	RouterKindGin     RouterKind = "gin"
+	RouterKindStdlib  RouterKind = "stdlib"
 	RouterKindUnknown RouterKind = "unknown"
 )
 
 // DetectRouter scans all import paths across all packages in the provided set
-// and determines which router framework is in use. If both chi and gin are
-// present, the one with more imports wins (chi as tiebreaker).
+// and determines which router framework is in use.
+// Priority: chi > gin > stdlib > unknown.
+// Stdlib detection requires actual route registration calls (http.HandleFunc,
+// http.Handle, http.NewServeMux), not just net/http imports.
 func DetectRouter(pkgs []*packages.Package) RouterKind {
 	var chiImports, ginImports int
 
@@ -34,13 +38,68 @@ func DetectRouter(pkgs []*packages.Package) RouterKind {
 	}, nil)
 
 	switch {
-	case chiImports == 0 && ginImports == 0:
-		return RouterKindUnknown
-	case chiImports >= ginImports:
+	case chiImports > 0 && chiImports >= ginImports:
 		return RouterKindChi
-	default:
+	case ginImports > 0:
 		return RouterKindGin
 	}
+
+	// No third-party router found. Check for stdlib mux usage.
+	if hasStdlibMuxUsage(pkgs) {
+		return RouterKindStdlib
+	}
+
+	return RouterKindUnknown
+}
+
+// hasStdlibMuxUsage checks if any package uses stdlib HTTP route registration
+// patterns: http.NewServeMux(), http.HandleFunc(), http.Handle(), or
+// mux.HandleFunc()/mux.Handle() on a *http.ServeMux variable.
+func hasStdlibMuxUsage(pkgs []*packages.Package) bool {
+	var found bool
+	packages.Visit(pkgs, func(pkg *packages.Package) bool {
+		if found {
+			return false
+		}
+		for _, file := range pkg.Syntax {
+			ast.Inspect(file, func(n ast.Node) bool {
+				if found {
+					return false
+				}
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				name := sel.Sel.Name
+				// http.NewServeMux(), http.HandleFunc(), http.Handle()
+				if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "http" {
+					if name == "NewServeMux" || name == "HandleFunc" || name == "Handle" {
+						found = true
+						return false
+					}
+				}
+				// mux.HandleFunc() / mux.Handle() — any variable calling HandleFunc/Handle
+				if name == "HandleFunc" || name == "Handle" {
+					if _, ok := sel.X.(*ast.Ident); ok {
+						// Check that the package imports net/http
+						for imp := range pkg.Imports {
+							if imp == "net/http" {
+								found = true
+								return false
+							}
+						}
+					}
+				}
+				return true
+			})
+		}
+		return true
+	}, nil)
+	return found
 }
 
 func isChiImport(path string) bool {

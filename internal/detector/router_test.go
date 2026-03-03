@@ -10,9 +10,13 @@ import (
 	"github.com/syst3mctl/godoclive/internal/loader"
 )
 
-func testdataDir() string {
+func testdataPath(name string) string {
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "..", "testdata", "chi-basic")
+	return filepath.Join(filepath.Dir(file), "..", "..", "testdata", name)
+}
+
+func testdataDir() string {
+	return testdataPath("chi-basic")
 }
 
 func TestDetectRouter_ChiBasic(t *testing.T) {
@@ -29,6 +33,23 @@ func TestDetectRouter_ChiBasic(t *testing.T) {
 	kind := detector.DetectRouter(pkgs)
 	if kind != detector.RouterKindChi {
 		t.Errorf("expected RouterKindChi, got %q", kind)
+	}
+}
+
+func TestDetectRouter_StdlibBasic(t *testing.T) {
+	dir := testdataPath("stdlib-basic")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		t.Skipf("testdata dir does not exist: %s", dir)
+	}
+
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	kind := detector.DetectRouter(pkgs)
+	if kind != detector.RouterKindStdlib {
+		t.Errorf("expected RouterKindStdlib, got %q", kind)
 	}
 }
 

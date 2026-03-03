@@ -31,7 +31,7 @@ func RunPipeline(dir, pattern string, cfg *config.Config) ([]model.EndpointDef, 
 	// 2. Detect router.
 	routerKind := detector.DetectRouter(pkgs)
 	if routerKind == detector.RouterKindUnknown {
-		return nil, fmt.Errorf("no supported router detected (expected chi or gin)")
+		return nil, fmt.Errorf("no supported router detected (expected chi, gin, or net/http stdlib)")
 	}
 
 	// 3. Choose and run the appropriate extractor.
@@ -41,6 +41,8 @@ func RunPipeline(dir, pattern string, cfg *config.Config) ([]model.EndpointDef, 
 		ext = &extractor.ChiExtractor{}
 	case detector.RouterKindGin:
 		ext = &extractor.GinExtractor{}
+	case detector.RouterKindStdlib:
+		ext = &extractor.StdlibExtractor{}
 	}
 
 	routes, err := ext.Extract(pkgs)
