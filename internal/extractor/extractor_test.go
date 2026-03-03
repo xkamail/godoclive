@@ -29,9 +29,8 @@ func TestChiExtractor_Basic(t *testing.T) {
 		t.Fatalf("Extract failed: %v", err)
 	}
 
-	// chi-basic has: GET /users, POST /users, GET /users/{id}, DELETE /users/{id}
-	// All inside r.Route("/users", func(r chi.Router){...})
-	// With a Group for auth-protected ones.
+	// chi-basic has: GET /users, POST /users, GET /users/{id}, DELETE /users/{id},
+	// GET /v1/users/{id} (deprecated), POST /v2/users (io.ReadAll pattern).
 	expected := []struct {
 		method string
 		path   string
@@ -40,6 +39,8 @@ func TestChiExtractor_Basic(t *testing.T) {
 		{"POST", "/users"},
 		{"GET", "/users/{id}"},
 		{"DELETE", "/users/{id}"},
+		{"GET", "/v1/users/{id}"},
+		{"POST", "/v2/users"},
 	}
 
 	if len(routes) != len(expected) {

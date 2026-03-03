@@ -983,14 +983,20 @@ input, textarea, select {
 }
 
 .try-it-panel {
-  display: none;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 16px;
+  padding-top: 0;
   margin-top: 8px;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
 }
 
 .try-it-panel.open {
-  display: block;
+  max-height: 4000px;
+  opacity: 1;
+  visibility: visible;
+  padding-top: 16px;
 }
 
 .try-it-row {
@@ -1482,6 +1488,10 @@ input, textarea, select {
 
   .copy-btn {
     transition: opacity 100ms ease;
+  }
+
+  .try-it-panel {
+    transition: max-height 200ms ease, opacity 200ms ease, visibility 200ms ease, padding-top 200ms ease;
   }
 }
 

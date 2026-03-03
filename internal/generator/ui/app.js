@@ -1526,7 +1526,17 @@
   var searchInput = document.getElementById('search-input');
   var searchShortcut = document.getElementById('search-shortcut');
 
+  // Platform-aware search shortcut display.
+  var isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  searchShortcut.textContent = isMac ? '\u2318K' : 'Ctrl+K';
+
   document.addEventListener('keydown', function (e) {
+    // Cmd+K (Mac) / Ctrl+K (others) — focus search.
+    if (e.key === 'k' && (isMac ? e.metaKey : e.ctrlKey)) {
+      e.preventDefault();
+      searchInput.focus();
+      return;
+    }
     if (e.key === '/' && document.activeElement !== searchInput) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       e.preventDefault();

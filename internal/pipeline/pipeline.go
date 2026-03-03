@@ -97,11 +97,22 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package) (model.End
 	var handlerFile string
 	var handlerLine int
 
+	var deprecated bool
+
 	if funcDecl != nil {
 		handlerNode = funcDecl
 		paramNames = resolver.ResolveHandlerParams(funcDecl.Type, info)
 		handlerName = funcDecl.Name.Name
 		handlerFile, handlerLine = posToFileLine(funcDecl.Pos(), pkgs)
+		// Check for // Deprecated: comment on the handler.
+		if funcDecl.Doc != nil {
+			for _, comment := range funcDecl.Doc.List {
+				if strings.Contains(comment.Text, "Deprecated:") {
+					deprecated = true
+					break
+				}
+			}
+		}
 	} else if funcLit != nil {
 		handlerNode = funcLit
 		paramNames = resolver.ResolveHandlerParams(funcLit.Type, info)
@@ -178,6 +189,7 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package) (model.End
 		Request:     req,
 		Responses:   responses,
 		Tags:        tags,
+		Deprecated:  deprecated,
 		Unresolved:  unresolved,
 	}
 

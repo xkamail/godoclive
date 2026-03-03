@@ -31,17 +31,19 @@ func TestResolveHandler_ChiBasic(t *testing.T) {
 		t.Fatalf("Extract failed: %v", err)
 	}
 
-	if len(routes) != 4 {
-		t.Fatalf("expected 4 routes, got %d", len(routes))
+	if len(routes) != 6 {
+		t.Fatalf("expected 6 routes, got %d", len(routes))
 	}
 
 	info := pkgs[0].TypesInfo
 
 	expectedHandlers := map[string]string{
-		"GET /users":       "ListUsers",
-		"POST /users":      "CreateUser",
-		"GET /users/{id}":  "GetUser",
-		"DELETE /users/{id}": "DeleteUser",
+		"GET /users":          "ListUsers",
+		"POST /users":         "CreateUser",
+		"GET /users/{id}":     "GetUser",
+		"DELETE /users/{id}":  "DeleteUser",
+		"GET /v1/users/{id}":  "GetUserV1",
+		"POST /v2/users":      "CreateUserV2",
 	}
 
 	for _, route := range routes {

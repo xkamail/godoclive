@@ -35,6 +35,7 @@ testdata/mixed-auth/mixed-auth
 AGENT_PROMPTS.md
 IMPLEMENTATION_FLOW.md
 technical_spec.md
+GAP_ANALYSIS.md
 CLAUDE.md
 brand-review.md
 REVIEW.md

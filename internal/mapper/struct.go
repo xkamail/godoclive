@@ -40,12 +40,13 @@ func mapStruct(named *types.Named, st *types.Struct, pkg *packages.Package, visi
 		}
 
 		fd := model.FieldDef{
-			Name:      field.Name(),
-			JSONName:  jsonName,
-			OmitEmpty: strings.Contains(opts, "omitempty"),
-			Nullable:  isPointer(field.Type()),
-			Required:  isRequired(tag),
-			Doc:       fieldDocComment(named, field, pkg),
+			Name:       field.Name(),
+			JSONName:   jsonName,
+			OmitEmpty:  strings.Contains(opts, "omitempty"),
+			Nullable:   isPointer(field.Type()),
+			Required:   isRequired(tag),
+			Doc:        fieldDocComment(named, field, pkg),
+			Deprecated: fieldIsDeprecated(named, field, pkg),
 		}
 		fd.Type = mapType(field.Type(), pkg, visited)
 		fd.Example = generateExample(field.Type(), jsonName)
@@ -84,6 +85,53 @@ func isRequired(tag reflect.StructTag) bool {
 	binding := tag.Get("binding")
 	validate := tag.Get("validate")
 	return strings.Contains(binding, "required") || strings.Contains(validate, "required")
+}
+
+// fieldIsDeprecated checks if a struct field has a // Deprecated: comment.
+func fieldIsDeprecated(named *types.Named, field *types.Var, pkg *packages.Package) bool {
+	if named == nil || pkg == nil {
+		return false
+	}
+	fieldPos := field.Pos()
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				st, ok := ts.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				for _, f := range st.Fields.List {
+					for _, name := range f.Names {
+						if name.Pos() == fieldPos {
+							if f.Doc != nil {
+								for _, c := range f.Doc.List {
+									if strings.Contains(c.Text, "Deprecated:") {
+										return true
+									}
+								}
+							}
+							if f.Comment != nil {
+								for _, c := range f.Comment.List {
+									if strings.Contains(c.Text, "Deprecated:") {
+										return true
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // fieldDocComment attempts to extract the doc comment for a struct field

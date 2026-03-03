@@ -93,7 +93,7 @@ func init() {
 	generateCmd.Flags().StringVar(&flagServe, "serve", "", "Address to serve after generation, e.g. :8080")
 	generateCmd.Flags().StringVar(&flagTitle, "title", "", "Override project title displayed in docs")
 	generateCmd.Flags().StringVar(&flagBaseURL, "base-url", "", "Pre-fill base URL in Try It")
-	generateCmd.Flags().StringVar(&flagTheme, "theme", "light", "Theme: light | dark")
+	generateCmd.Flags().StringVar(&flagTheme, "theme", "", "Theme: light | dark (default: light)")
 
 	// analyze flags
 	analyzeCmd.Flags().BoolVar(&flagAnalyzeJSON, "json", false, "Output contract as JSON (machine-readable)")
@@ -109,7 +109,7 @@ func init() {
 	watchCmd.Flags().StringVar(&flagServe, "serve", "", "Address to serve after generation, e.g. :8080")
 	watchCmd.Flags().StringVar(&flagTitle, "title", "", "Override project title displayed in docs")
 	watchCmd.Flags().StringVar(&flagBaseURL, "base-url", "", "Pre-fill base URL in Try It")
-	watchCmd.Flags().StringVar(&flagTheme, "theme", "light", "Theme: light | dark")
+	watchCmd.Flags().StringVar(&flagTheme, "theme", "", "Theme: light | dark (default: light)")
 
 	rootCmd.AddCommand(analyzeCmd, generateCmd, watchCmd, validateCmd)
 }
@@ -322,15 +322,9 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cfg := generator.GeneratorConfig{
-		OutputPath: flagOutput,
-		Format:     flagFormat,
-		Title:      flagTitle,
-		BaseURL:    flagBaseURL,
-		Theme:      flagTheme,
-	}
+	genCfg := buildGeneratorConfig(args[0])
 
-	if err := generator.Generate(endpoints, cfg); err != nil {
+	if err := generator.Generate(endpoints, genCfg); err != nil {
 		return err
 	}
 
@@ -341,6 +335,39 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		return generator.Serve(flagOutput, flagServe)
 	}
 	return nil
+}
+
+// buildGeneratorConfig creates a GeneratorConfig merging CLI flags with
+// .godoclive.yaml values. CLI flags take precedence.
+func buildGeneratorConfig(pattern string) generator.GeneratorConfig {
+	dir, _ := splitDirPattern(pattern)
+	absDir, _ := filepath.Abs(dir)
+	cfg, _ := config.LoadConfig(absDir)
+
+	return generator.GeneratorConfig{
+		OutputPath: flagOutput,
+		Format:     flagFormat,
+		Title:      coalesce(flagTitle, cfgStr(cfg, func(c *config.Config) string { return c.Title })),
+		Version:    cfgStr(cfg, func(c *config.Config) string { return c.Version }),
+		BaseURL:    coalesce(flagBaseURL, cfgStr(cfg, func(c *config.Config) string { return c.BaseURL })),
+		Theme:      coalesce(flagTheme, cfgStr(cfg, func(c *config.Config) string { return c.Theme }), "light"),
+	}
+}
+
+func coalesce(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func cfgStr(cfg *config.Config, fn func(*config.Config) string) string {
+	if cfg == nil {
+		return ""
+	}
+	return fn(cfg)
 }
 
 // runWatch implements the watch command.
@@ -362,13 +389,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initial generation.
-	genCfg := generator.GeneratorConfig{
-		OutputPath: flagOutput,
-		Format:     flagFormat,
-		Title:      flagTitle,
-		BaseURL:    flagBaseURL,
-		Theme:      flagTheme,
-	}
+	genCfg := buildGeneratorConfig(pattern)
 
 	doGenerate := func() {
 		endpoints, err := runPipeline(pattern)

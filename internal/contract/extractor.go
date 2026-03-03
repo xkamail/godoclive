@@ -55,6 +55,18 @@ func ExtractContract(
 	bodyResult := ExtractBody(body, info, paramNames)
 	unresolved = append(unresolved, bodyResult.Unresolved...)
 
+	// Promote ShouldBindQuery fields to QueryParams.
+	if bodyResult.BindQueryType != nil {
+		promoted := promoteStructFields(bodyResult.BindQueryType, "form", "query")
+		queryParams = append(queryParams, promoted...)
+	}
+
+	// Promote ShouldBindHeader fields to Headers.
+	if bodyResult.BindHeaderType != nil {
+		promoted := promoteStructFields(bodyResult.BindHeaderType, "header", "header")
+		headers = append(headers, promoted...)
+	}
+
 	req := model.RequestDef{
 		PathParams:  pathParams,
 		QueryParams: queryParams,

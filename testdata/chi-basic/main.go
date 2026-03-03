@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,6 +51,9 @@ func main() {
 			r.Delete("/{id}", DeleteUser)
 		})
 	})
+
+	r.Get("/v1/users/{id}", GetUserV1)
+	r.Post("/v2/users", CreateUserV2)
 
 	http.ListenAndServe(":3000", r)
 }
@@ -165,6 +169,14 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+// Deprecated: Use GetUser instead.
+func GetUserV1(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(UserResponse{ID: id, Name: "Alice"})
+}
+
 // DeleteUser deletes a user by ID.
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -179,4 +191,25 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// CreateUserV2 creates a user using io.ReadAll + json.Unmarshal pattern.
+func CreateUserV2(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	var req CreateUserRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(UserResponse{
+		ID:    "new-v2",
+		Name:  req.Name,
+		Email: req.Email,
+	})
 }

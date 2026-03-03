@@ -10,11 +10,13 @@ import (
 
 // BodyResult holds the outcome of request body extraction.
 type BodyResult struct {
-	BodyType    types.Type // The resolved type of the request body struct (nil if none)
-	ContentType string     // "application/json", "multipart/form-data", or combo
-	IsMultipart bool
-	FileParams  []model.ParamDef // File params from FormFile calls
-	Unresolved  []string         // Anything that couldn't be determined
+	BodyType       types.Type // The resolved type of the request body struct (nil if none)
+	ContentType    string     // "application/json", "multipart/form-data", or combo
+	IsMultipart    bool
+	FileParams     []model.ParamDef // File params from FormFile calls
+	BindQueryType  types.Type       // Struct type from ShouldBindQuery — promotes fields to QueryParams
+	BindHeaderType types.Type       // Struct type from ShouldBindHeader — promotes fields to Headers
+	Unresolved     []string         // Anything that couldn't be determined
 }
 
 // ExtractBody walks a handler function body and detects request body patterns
@@ -53,6 +55,18 @@ func ExtractBody(body *ast.BlockStmt, info *types.Info, paramNames resolver.Hand
 		if t, ok := matchGinBindJSON(call, info, paramNames.GinCtx); ok {
 			result.BodyType = t
 			result.ContentType = "application/json"
+			return false
+		}
+
+		// c.ShouldBindQuery(&q) — promotes struct fields to QueryParams
+		if t, ok := matchGinBindMethod(call, info, paramNames.GinCtx, "ShouldBindQuery"); ok {
+			result.BindQueryType = t
+			return false
+		}
+
+		// c.ShouldBindHeader(&q) — promotes struct fields to Headers
+		if t, ok := matchGinBindMethod(call, info, paramNames.GinCtx, "ShouldBindHeader"); ok {
+			result.BindHeaderType = t
 			return false
 		}
 
@@ -164,16 +178,13 @@ func matchJSONUnmarshal(call *ast.CallExpr, info *types.Info) (types.Type, bool)
 	return nil, false
 }
 
-// matchGinBindJSON matches c.ShouldBindJSON(&req) or c.BindJSON(&req).
-func matchGinBindJSON(call *ast.CallExpr, info *types.Info, ginCtx string) (types.Type, bool) {
+// matchGinBindMethod matches c.<method>(&req) for a specific gin bind method.
+func matchGinBindMethod(call *ast.CallExpr, info *types.Info, ginCtx, method string) (types.Type, bool) {
 	if ginCtx == "" {
 		return nil, false
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return nil, false
-	}
-	if sel.Sel.Name != "ShouldBindJSON" && sel.Sel.Name != "BindJSON" {
+	if !ok || sel.Sel.Name != method {
 		return nil, false
 	}
 	recv, ok := sel.X.(*ast.Ident)
@@ -184,6 +195,14 @@ func matchGinBindJSON(call *ast.CallExpr, info *types.Info, ginCtx string) (type
 		return extractArgType(call.Args[0], info)
 	}
 	return nil, false
+}
+
+// matchGinBindJSON matches c.ShouldBindJSON(&req) or c.BindJSON(&req).
+func matchGinBindJSON(call *ast.CallExpr, info *types.Info, ginCtx string) (types.Type, bool) {
+	if t, ok := matchGinBindMethod(call, info, ginCtx, "ShouldBindJSON"); ok {
+		return t, true
+	}
+	return matchGinBindMethod(call, info, ginCtx, "BindJSON")
 }
 
 // matchGinShouldBind matches c.ShouldBind(&req).

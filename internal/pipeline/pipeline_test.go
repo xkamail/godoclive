@@ -34,8 +34,8 @@ func TestPipeline_ChiBasic(t *testing.T) {
 		t.Fatalf("RunPipeline: %v", err)
 	}
 
-	if len(eps) != 4 {
-		t.Fatalf("expected 4 endpoints, got %d", len(eps))
+	if len(eps) != 6 {
+		t.Fatalf("expected 6 endpoints, got %d", len(eps))
 	}
 
 	// Verify all expected routes exist.
@@ -47,6 +47,8 @@ func TestPipeline_ChiBasic(t *testing.T) {
 		{"POST", "/users"},
 		{"GET", "/users/{id}"},
 		{"DELETE", "/users/{id}"},
+		{"GET", "/v1/users/{id}"},
+		{"POST", "/v2/users"},
 	}
 	for _, r := range routes {
 		ep := findEndpoint(eps, r.method, r.path)
@@ -239,6 +241,54 @@ func TestPipeline_ChiBasic_DeleteUser(t *testing.T) {
 	}
 	if !has204 {
 		t.Error("missing 204 response")
+	}
+}
+
+func TestPipeline_ChiBasic_IOReadAllBody(t *testing.T) {
+	dir := testdataDir("chi-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	ep := findEndpoint(eps, "POST", "/v2/users")
+	if ep == nil {
+		t.Fatal("POST /v2/users not found")
+	}
+
+	if ep.Request.Body == nil {
+		t.Fatal("expected request body from io.ReadAll + json.Unmarshal pattern")
+	}
+	if ep.Request.Body.Name != "CreateUserRequest" {
+		t.Errorf("body name = %q, want %q", ep.Request.Body.Name, "CreateUserRequest")
+	}
+	if ep.Request.ContentType != "application/json" {
+		t.Errorf("content type = %q, want %q", ep.Request.ContentType, "application/json")
+	}
+}
+
+func TestPipeline_ChiBasic_DeprecatedHandler(t *testing.T) {
+	dir := testdataDir("chi-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	ep := findEndpoint(eps, "GET", "/v1/users/{id}")
+	if ep == nil {
+		t.Fatal("GET /v1/users/{id} not found")
+	}
+	if !ep.Deprecated {
+		t.Error("GET /v1/users/{id} should be deprecated")
+	}
+
+	// Non-deprecated endpoints should not be marked.
+	ep2 := findEndpoint(eps, "GET", "/users/{id}")
+	if ep2 == nil {
+		t.Fatal("GET /users/{id} not found")
+	}
+	if ep2.Deprecated {
+		t.Error("GET /users/{id} should not be deprecated")
 	}
 }
 
@@ -1069,6 +1119,8 @@ func TestPipeline_AccuracyReport(t *testing.T) {
 				{"POST", "/users"},
 				{"GET", "/users/{id}"},
 				{"DELETE", "/users/{id}"},
+				{"GET", "/v1/users/{id}"},
+				{"POST", "/v2/users"},
 			},
 		},
 		{
@@ -1138,6 +1190,12 @@ func TestPipeline_AccuracyReport(t *testing.T) {
 				{"GET", "/webhooks"},
 				{"POST", "/webhooks"},
 				{"GET", "/admin/stats"},
+			},
+		},
+		{
+			name: "gin-bind-query",
+			expectedRoutes: []struct{ method, path string }{
+				{"GET", "/products"},
 			},
 		},
 	}
@@ -1251,6 +1309,87 @@ func pct(found, total int) float64 {
 	return float64(found) / float64(total) * 100.0
 }
 
+// --- gin-bind-query integration tests ---
+
+func TestPipeline_GinBindQuery(t *testing.T) {
+	dir := testdataDir("gin-bind-query")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	if len(eps) != 1 {
+		t.Fatalf("expected 1 endpoint, got %d", len(eps))
+	}
+
+	ep := findEndpoint(eps, "GET", "/products")
+	if ep == nil {
+		t.Fatal("GET /products not found")
+	}
+
+	// Query params should include promoted fields from ShouldBindQuery.
+	var foundPage, foundLimit, foundSearch bool
+	for _, p := range ep.Request.QueryParams {
+		switch p.Name {
+		case "page":
+			foundPage = true
+			if !p.Required {
+				t.Error("page should be required")
+			}
+			if p.Type != "integer" {
+				t.Errorf("page type = %q, want %q", p.Type, "integer")
+			}
+		case "limit":
+			foundLimit = true
+			if p.Required {
+				t.Error("limit should not be required")
+			}
+			if p.Type != "integer" {
+				t.Errorf("limit type = %q, want %q", p.Type, "integer")
+			}
+		case "search":
+			foundSearch = true
+			if p.Type != "string" {
+				t.Errorf("search type = %q, want %q", p.Type, "string")
+			}
+		}
+	}
+	if !foundPage {
+		t.Error("missing query param 'page' from ShouldBindQuery promotion")
+	}
+	if !foundLimit {
+		t.Error("missing query param 'limit' from ShouldBindQuery promotion")
+	}
+	if !foundSearch {
+		t.Error("missing query param 'search' from ShouldBindQuery promotion")
+	}
+
+	// Headers should include promoted fields from ShouldBindHeader.
+	var foundTenantID, foundRequestID bool
+	for _, h := range ep.Request.Headers {
+		switch h.Name {
+		case "X-Tenant-ID":
+			foundTenantID = true
+			if !h.Required {
+				t.Error("X-Tenant-ID should be required")
+			}
+		case "X-Request-ID":
+			foundRequestID = true
+		}
+	}
+	if !foundTenantID {
+		t.Error("missing header 'X-Tenant-ID' from ShouldBindHeader promotion")
+	}
+	if !foundRequestID {
+		t.Error("missing header 'X-Request-ID' from ShouldBindHeader promotion")
+	}
+
+	// Request body should be nil (ShouldBindQuery is not a body).
+	if ep.Request.Body != nil {
+		t.Error("expected no request body — ShouldBindQuery/Header should not set body")
+	}
+}
+
 // --- Cross-project feature summary ---
 
 func TestPipeline_AllProjects_Build(t *testing.T) {
@@ -1258,7 +1397,7 @@ func TestPipeline_AllProjects_Build(t *testing.T) {
 	projects := []string{
 		"chi-basic", "chi-nested", "chi-inline", "chi-helpers",
 		"gin-basic", "gin-groups", "gin-helpers",
-		"multipart", "mixed-auth",
+		"multipart", "mixed-auth", "gin-bind-query",
 	}
 	for _, name := range projects {
 		t.Run(name, func(t *testing.T) {
