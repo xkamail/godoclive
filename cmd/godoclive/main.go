@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"bufio"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -212,8 +213,8 @@ func printJSON(endpoints []model.EndpointDef) error {
 // printSummaryTable prints a human-readable summary table.
 func printSummaryTable(endpoints []model.EndpointDef, verbose bool) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "METHOD\tPATH\tSUMMARY\tAUTH\tSTATUS")
-	fmt.Fprintln(w, "------\t----\t-------\t----\t------")
+	_, _ = fmt.Fprintln(w, "METHOD\tPATH\tSUMMARY\tAUTH\tSTATUS")
+	_, _ = fmt.Fprintln(w, "------\t----\t-------\t----\t------")
 
 	for _, ep := range endpoints {
 		authStr := "-"
@@ -230,12 +231,12 @@ func printSummaryTable(endpoints []model.EndpointDef, verbose bool) error {
 			status = fmt.Sprintf("\u26a0 partial (%d unresolved)", len(ep.Unresolved))
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			ep.Method, ep.Path, ep.Summary, authStr, status)
 
 		if verbose && len(ep.Unresolved) > 0 {
 			for _, u := range ep.Unresolved {
-				fmt.Fprintf(w, "\t\t  -> %s\t\t\n", u)
+				_, _ = fmt.Fprintf(w, "\t\t  -> %s\t\t\n", u)
 			}
 		}
 	}
@@ -338,18 +339,19 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 }
 
 // buildGeneratorConfig creates a GeneratorConfig merging CLI flags with
-// .godoclive.yaml values. CLI flags take precedence.
+// .env and .godoclive.yaml values. Precedence: CLI flag > .env > yaml > default.
 func buildGeneratorConfig(pattern string) generator.GeneratorConfig {
 	dir, _ := splitDirPattern(pattern)
 	absDir, _ := filepath.Abs(dir)
 	cfg, _ := config.LoadConfig(absDir)
+	env := loadDotEnv(absDir)
 
 	return generator.GeneratorConfig{
 		OutputPath: flagOutput,
 		Format:     flagFormat,
 		Title:      coalesce(flagTitle, cfgStr(cfg, func(c *config.Config) string { return c.Title })),
 		Version:    cfgStr(cfg, func(c *config.Config) string { return c.Version }),
-		BaseURL:    coalesce(flagBaseURL, cfgStr(cfg, func(c *config.Config) string { return c.BaseURL })),
+		BaseURL:    coalesce(flagBaseURL, env["API_URL"], cfgStr(cfg, func(c *config.Config) string { return c.BaseURL })),
 		Theme:      coalesce(flagTheme, cfgStr(cfg, func(c *config.Config) string { return c.Theme }), "light"),
 	}
 }
@@ -368,6 +370,39 @@ func cfgStr(cfg *config.Config, fn func(*config.Config) string) string {
 		return ""
 	}
 	return fn(cfg)
+}
+
+// loadDotEnv reads a .env file from the given directory and returns a map of
+// key=value pairs. Returns an empty map if the file doesn't exist.
+func loadDotEnv(dir string) map[string]string {
+	result := make(map[string]string)
+	f, err := os.Open(filepath.Join(dir, ".env"))
+	if err != nil {
+		return result
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		// Strip surrounding quotes.
+		if len(value) >= 2 &&
+			((value[0] == '"' && value[len(value)-1] == '"') ||
+				(value[0] == '\'' && value[len(value)-1] == '\'')) {
+			value = value[1 : len(value)-1]
+		}
+		result[key] = value
+	}
+	return result
 }
 
 // runWatch implements the watch command.
@@ -421,7 +456,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating file watcher: %w", err)
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	// Walk dir and add all directories containing .go files.
 	if err := addWatchDirs(watcher, dir); err != nil {
