@@ -286,3 +286,98 @@ func TestGinExtractor_Middleware(t *testing.T) {
 		}
 	}
 }
+
+// --- Stdlib extractor tests ---
+
+func TestStdlibExtractor_Basic(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// stdlib-basic has:
+	// GET /users, POST /users, GET /users/{id}, DELETE /users/{id},
+	// /health (ANY), GET /products/{id} (http.Handler)
+	expected := map[string]bool{
+		"GET /users":        true,
+		"POST /users":       true,
+		"GET /users/{id}":   true,
+		"DELETE /users/{id}": true,
+		"ANY /health":       true,
+		"GET /products/{id}": true,
+	}
+
+	if len(routes) != len(expected) {
+		t.Errorf("expected %d routes, got %d", len(expected), len(routes))
+		for _, r := range routes {
+			t.Logf("  found: %s %s (line %d)", r.Method, r.Path, r.Line)
+		}
+	}
+
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if !expected[key] {
+			t.Errorf("unexpected route: %s", key)
+		}
+		delete(expected, key)
+	}
+
+	for key := range expected {
+		t.Errorf("missing route: %s", key)
+	}
+
+	// Verify all routes have handler expressions and file/line info.
+	for _, r := range routes {
+		if r.HandlerExpr == nil {
+			t.Errorf("route %s %s has nil HandlerExpr", r.Method, r.Path)
+		}
+		if r.File == "" {
+			t.Errorf("route %s %s has empty File", r.Method, r.Path)
+		}
+		if r.Line == 0 {
+			t.Errorf("route %s %s has zero Line", r.Method, r.Path)
+		}
+	}
+}
+
+func TestStdlibExtractor_PatternParsing(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// /health should have method "ANY" since no method prefix.
+	for _, r := range routes {
+		if r.Path == "/health" {
+			if r.Method != "ANY" {
+				t.Errorf("/health method = %q, want %q", r.Method, "ANY")
+			}
+		}
+	}
+
+	// {id} should be preserved as-is (Go 1.22+ native format).
+	found := false
+	for _, r := range routes {
+		if r.Method == "GET" && r.Path == "/users/{id}" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("path parameter /users/{id} not found")
+	}
+}

@@ -1399,3 +1399,191 @@ func countUnresolved(eps []model.EndpointDef) int {
 	return n
 }
 
+// --- stdlib-basic integration tests ---
+
+func TestPipeline_StdlibBasic(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	// stdlib-basic has 6 routes:
+	// GET /users, POST /users, GET /users/{id}, DELETE /users/{id},
+	// ANY /health, GET /products/{id}
+	if len(eps) != 6 {
+		t.Fatalf("expected 6 endpoints, got %d", len(eps))
+	}
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/users"},
+		{"POST", "/users"},
+		{"GET", "/users/{id}"},
+		{"DELETE", "/users/{id}"},
+		{"ANY", "/health"},
+		{"GET", "/products/{id}"},
+	}
+	for _, r := range routes {
+		ep := findEndpoint(eps, r.method, r.path)
+		if ep == nil {
+			t.Errorf("missing endpoint %s %s", r.method, r.path)
+		}
+	}
+}
+
+func TestPipeline_StdlibBasic_ListUsers(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	ep := findEndpoint(eps, "GET", "/users")
+	if ep == nil {
+		t.Fatal("GET /users not found")
+	}
+
+	// Summary inferred from handler name.
+	if ep.Summary != "List Users" {
+		t.Errorf("Summary = %q, want %q", ep.Summary, "List Users")
+	}
+
+	// Tags inferred.
+	if len(ep.Tags) == 0 || ep.Tags[0] != "users" {
+		t.Errorf("Tags = %v, want [users]", ep.Tags)
+	}
+
+	// Query params: page (required), limit (optional).
+	if len(ep.Request.QueryParams) < 2 {
+		t.Errorf("expected at least 2 query params, got %d", len(ep.Request.QueryParams))
+	}
+}
+
+func TestPipeline_StdlibBasic_GetUser(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	ep := findEndpoint(eps, "GET", "/users/{id}")
+	if ep == nil {
+		t.Fatal("GET /users/{id} not found")
+	}
+
+	// Path param: id.
+	if len(ep.Request.PathParams) != 1 {
+		t.Fatalf("expected 1 path param, got %d", len(ep.Request.PathParams))
+	}
+	if ep.Request.PathParams[0].Name != "id" {
+		t.Errorf("path param name = %q, want %q", ep.Request.PathParams[0].Name, "id")
+	}
+
+	// Responses should include 200 and 400.
+	has200 := false
+	has400 := false
+	for _, r := range ep.Responses {
+		if r.StatusCode == 200 {
+			has200 = true
+		}
+		if r.StatusCode == 400 {
+			has400 = true
+		}
+	}
+	if !has200 {
+		t.Error("missing 200 response")
+	}
+	if !has400 {
+		t.Error("missing 400 response")
+	}
+}
+
+func TestPipeline_StdlibBasic_CreateUser(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	ep := findEndpoint(eps, "POST", "/users")
+	if ep == nil {
+		t.Fatal("POST /users not found")
+	}
+
+	// Should have a request body (CreateUserRequest).
+	if ep.Request.Body == nil {
+		t.Error("expected request body for POST /users")
+	}
+
+	// Responses should include 201 and 400.
+	has201 := false
+	has400 := false
+	for _, r := range ep.Responses {
+		if r.StatusCode == 201 {
+			has201 = true
+		}
+		if r.StatusCode == 400 {
+			has400 = true
+		}
+	}
+	if !has201 {
+		t.Error("missing 201 response")
+	}
+	if !has400 {
+		t.Error("missing 400 response")
+	}
+}
+
+func TestPipeline_StdlibBasic_PathValue(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	// Verify r.PathValue("id") is detected for stdlib handlers.
+	ep := findEndpoint(eps, "GET", "/users/{id}")
+	if ep == nil {
+		t.Fatal("GET /users/{id} not found")
+	}
+	if len(ep.Request.PathParams) == 0 {
+		t.Fatal("no path params found")
+	}
+	// The path param should have type "uuid" from name heuristic (id → uuid).
+	if ep.Request.PathParams[0].Type != "uuid" {
+		t.Errorf("path param type = %q, want %q", ep.Request.PathParams[0].Type, "uuid")
+	}
+}
+
+func TestPipeline_StdlibBasic_ProductHandler(t *testing.T) {
+	dir := testdataDir("stdlib-basic")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	ep := findEndpoint(eps, "GET", "/products/{id}")
+	if ep == nil {
+		t.Fatal("GET /products/{id} not found")
+	}
+
+	// Should resolve to ServeHTTP method of ProductHandler.
+	if ep.HandlerName == "" {
+		t.Error("expected a handler name for product handler")
+	}
+
+	// Should have 200 response.
+	has200 := false
+	for _, r := range ep.Responses {
+		if r.StatusCode == 200 {
+			has200 = true
+		}
+	}
+	if !has200 {
+		t.Error("missing 200 response")
+	}
+}
+

@@ -67,6 +67,9 @@ func ExtractContract(
 		headers = append(headers, promoted...)
 	}
 
+	// Deduplicate: remove any query param whose name matches a path param.
+	queryParams = deduplicateParams(pathParams, queryParams)
+
 	req := model.RequestDef{
 		PathParams:  pathParams,
 		QueryParams: queryParams,
@@ -97,4 +100,23 @@ func ExtractContract(
 	unresolved = append(unresolved, respUnresolved...)
 
 	return req, responses, unresolved
+}
+
+// deduplicateParams removes query params whose name matches a path param.
+// This avoids double-reporting when r.FormValue() is used for a path param.
+func deduplicateParams(pathParams, queryParams []model.ParamDef) []model.ParamDef {
+	if len(pathParams) == 0 || len(queryParams) == 0 {
+		return queryParams
+	}
+	pathNames := make(map[string]bool, len(pathParams))
+	for _, p := range pathParams {
+		pathNames[p.Name] = true
+	}
+	var filtered []model.ParamDef
+	for _, q := range queryParams {
+		if !pathNames[q.Name] {
+			filtered = append(filtered, q)
+		}
+	}
+	return filtered
 }
