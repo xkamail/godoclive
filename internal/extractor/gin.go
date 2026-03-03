@@ -109,18 +109,14 @@ func (w *ginWalker) walkBlock(stmts []ast.Stmt, prefix string, parentMW []ast.Ex
 
 			// .Use() on the current router (not a group variable)
 			if name == "Use" && !w.isGroup(receiverName) {
-				for _, arg := range call.Args {
-					scopeMW = append(scopeMW, arg)
-				}
+				scopeMW = append(scopeMW, call.Args...)
 				continue
 			}
 
 			// .Use() on a group variable
 			if name == "Use" && w.isGroup(receiverName) {
 				g := w.groups[receiverName]
-				for _, arg := range call.Args {
-					g.middlewares = append(g.middlewares, arg)
-				}
+				g.middlewares = append(g.middlewares, call.Args...)
 				continue
 			}
 
@@ -169,10 +165,7 @@ func (w *ginWalker) handleAssign(assign *ast.AssignStmt, prefix string, scopeMW 
 	}
 
 	groupPrefix := stringLitValue(call.Args[0])
-	var groupMW []ast.Expr
-	for _, arg := range call.Args[1:] {
-		groupMW = append(groupMW, arg)
-	}
+	groupMW := append([]ast.Expr{}, call.Args[1:]...)
 
 	w.groups[lhs.Name] = &ginGroup{
 		prefix:      joinPath(parentPrefix, groupPrefix),

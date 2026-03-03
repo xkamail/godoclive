@@ -1,7 +1,6 @@
 package pipeline_test
 
 import (
-	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -169,9 +168,6 @@ func TestPipeline_ChiBasic_CreateUser(t *testing.T) {
 	for _, r := range ep.Responses {
 		if r.StatusCode == 201 {
 			has201 = true
-			if r.Body != nil && r.Body.Name == "UserResponse" {
-				// Good — response body is mapped.
-			}
 		}
 		if r.StatusCode == 400 {
 			has400 = true
@@ -1087,26 +1083,6 @@ func TestPipeline_MixedAuth_BasicAuthRoutes(t *testing.T) {
 // --- Accuracy measurement (Section 14.2) ---
 
 func TestPipeline_AccuracyReport(t *testing.T) {
-	type projectResult struct {
-		name              string
-		totalRoutes       int
-		detectedRoutes    int
-		pathParamsTotal   int
-		pathParamsFound   int
-		queryParamsTotal  int
-		queryParamsFound  int
-		bodiesTotal       int
-		bodiesFound       int
-		statusCodesTotal  int
-		statusCodesFound  int
-		bodyLinksTotal    int
-		bodyLinksFound    int
-		helpersTotal      int
-		helpersFound      int
-		authTotal         int
-		authFound         int
-	}
-
 	projects := []struct {
 		name           string
 		expectedRoutes []struct{ method, path string }
@@ -1299,7 +1275,7 @@ func TestPipeline_AccuracyReport(t *testing.T) {
 		t.Errorf("Route detection %.1f%% below 95%% target", routePct)
 	}
 
-	_ = projectResult{} // suppress unused type
+
 }
 
 func pct(found, total int) float64 {
@@ -1423,5 +1399,3 @@ func countUnresolved(eps []model.EndpointDef) int {
 	return n
 }
 
-// Ensure unused import is used.
-var _ = fmt.Sprintf

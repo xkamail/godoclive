@@ -160,9 +160,7 @@ func (w *chiWalker) processCall(call *ast.CallExpr, prefix string, scopeMW *[]as
 
 	switch {
 	case name == "Use":
-		for _, arg := range call.Args {
-			*scopeMW = append(*scopeMW, arg)
-		}
+		*scopeMW = append(*scopeMW, call.Args...)
 
 	case chiMethods[name] != "" && len(call.Args) >= 2:
 		allMW := concatExprs(*scopeMW, withMW)
