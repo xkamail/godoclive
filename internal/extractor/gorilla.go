@@ -212,7 +212,7 @@ func (w *gorillaWalker) processCall(call *ast.CallExpr, prefix string, scopeMW *
 // addRoute records a route without .Methods() chain (ANY method).
 func (w *gorillaWalker) addRoute(call *ast.CallExpr, prefix string, middlewares []ast.Expr) {
 	patternArg := stringLitValue(call.Args[0])
-	fullPath := normalizeGorillaPath(joinPath(prefix, patternArg))
+	fullPath := NormalizeGorillaPath(joinPath(prefix, patternArg))
 	handler := call.Args[1]
 
 	pos := w.fset.Position(call.Pos())
@@ -246,7 +246,7 @@ func (w *gorillaWalker) addChainedRoute(call *ast.CallExpr, prefix string, middl
 	}
 
 	patternArg := stringLitValue(call.Args[0])
-	fullPath := normalizeGorillaPath(joinPath(callPrefix, patternArg))
+	fullPath := NormalizeGorillaPath(joinPath(callPrefix, patternArg))
 	handler := call.Args[1]
 
 	pos := w.fset.Position(call.Pos())
@@ -276,6 +276,8 @@ func extractMethodStrings(args []ast.Expr) []string {
 }
 
 // normalizeGorillaPath converts {id:[0-9]+} → {id}.
-func normalizeGorillaPath(path string) string {
+// NormalizeGorillaPath strips regex constraints from gorilla path parameters.
+// e.g. "/items/{id:[0-9]+}" → "/items/{id}"
+func NormalizeGorillaPath(path string) string {
 	return gorillaParamRegex.ReplaceAllString(path, "{$1}")
 }

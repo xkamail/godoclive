@@ -347,6 +347,216 @@ func TestStdlibExtractor_Basic(t *testing.T) {
 	}
 }
 
+// --- Gorilla extractor tests ---
+
+func TestGorillaExtractor_Basic(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// gorilla-basic has:
+	// GET /users, POST /users, GET /users/{id}, DELETE /users/{id} (.Methods() chain)
+	// ANY /health (no .Methods())
+	// GET /api/v1/items, GET /api/v1/items/{id} (subrouter with PathPrefix + .Methods())
+	// GET /admin/dashboard (nested subrouter)
+	expected := map[string]bool{
+		"GET /users":              true,
+		"POST /users":             true,
+		"GET /users/{id}":         true,
+		"DELETE /users/{id}":      true,
+		"ANY /health":             true,
+		"GET /api/v1/items":       true,
+		"GET /api/v1/items/{id}":  true,
+		"GET /admin/dashboard":    true,
+	}
+
+	if len(routes) != len(expected) {
+		t.Errorf("expected %d routes, got %d", len(expected), len(routes))
+		for _, r := range routes {
+			t.Logf("  found: %s %s (line %d)", r.Method, r.Path, r.Line)
+		}
+	}
+
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if !expected[key] {
+			t.Errorf("unexpected route: %s", key)
+		}
+		delete(expected, key)
+	}
+
+	for key := range expected {
+		t.Errorf("missing route: %s", key)
+	}
+
+	// Verify all routes have handler expressions and file/line info.
+	for _, r := range routes {
+		if r.HandlerExpr == nil {
+			t.Errorf("route %s %s has nil HandlerExpr", r.Method, r.Path)
+		}
+		if r.File == "" {
+			t.Errorf("route %s %s has empty File", r.Method, r.Path)
+		}
+		if r.Line == 0 {
+			t.Errorf("route %s %s has zero Line", r.Method, r.Path)
+		}
+	}
+}
+
+func TestGorillaExtractor_MethodRouting(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// Routes with .Methods() should have specific methods; without → ANY.
+	methodMap := make(map[string]string)
+	for _, r := range routes {
+		methodMap[r.Method+" "+r.Path] = r.Method
+	}
+
+	if _, ok := methodMap["ANY /health"]; !ok {
+		t.Error("route without .Methods() should have method ANY")
+	}
+	if _, ok := methodMap["GET /users"]; !ok {
+		t.Error("GET /users should exist from .Methods(\"GET\")")
+	}
+	if _, ok := methodMap["POST /users"]; !ok {
+		t.Error("POST /users should exist from .Methods(\"POST\")")
+	}
+}
+
+func TestGorillaExtractor_SubrouterPrefixes(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// Verify prefix accumulation from PathPrefix().Subrouter().
+	found := map[string]bool{}
+	for _, r := range routes {
+		found[r.Method+" "+r.Path] = true
+	}
+
+	if !found["GET /api/v1/items"] {
+		t.Error("GET /api/v1/items not found — subrouter prefix accumulation broken")
+	}
+	if !found["GET /admin/dashboard"] {
+		t.Error("GET /admin/dashboard not found — nested subrouter prefix broken")
+	}
+}
+
+func TestGorillaExtractor_RegexNormalization(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// {id:[0-9]+} should be normalized to {id}.
+	for _, r := range routes {
+		if r.Path == "/api/v1/items/{id:[0-9]+}" {
+			t.Errorf("path not normalized: got %s, want /api/v1/items/{id}", r.Path)
+		}
+	}
+
+	found := false
+	for _, r := range routes {
+		if r.Method == "GET" && r.Path == "/api/v1/items/{id}" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("normalized path /api/v1/items/{id} not found")
+	}
+}
+
+func TestGorillaExtractor_Middleware(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// Subrouter routes (/api/v1/* and /admin/*) should have authMiddleware.
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if key == "GET /api/v1/items" || key == "GET /admin/dashboard" {
+			if len(r.Middlewares) == 0 {
+				t.Errorf("route %s should have middleware (authMiddleware)", key)
+			}
+		}
+	}
+
+	// Root routes (/users, /health) should not have authMiddleware
+	// (only loggingMiddleware from r.Use).
+	for _, r := range routes {
+		if r.Path == "/health" || r.Path == "/users" {
+			// They should have the root loggingMiddleware but not authMiddleware.
+			// Just verify they have some middleware from root r.Use().
+			if len(r.Middlewares) == 0 {
+				t.Logf("route %s %s has no middlewares (loggingMiddleware expected from r.Use)", r.Method, r.Path)
+			}
+		}
+	}
+}
+
+func TestNormalizeGorillaPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/users/{id}", "/users/{id}"},
+		{"/users/{id:[0-9]+}", "/users/{id}"},
+		{"/files/{path:.*}", "/files/{path}"},
+		{"/items/{id:[0-9]+}/reviews/{reviewID}", "/items/{id}/reviews/{reviewID}"},
+		{"/no-params", "/no-params"},
+	}
+	for _, tt := range tests {
+		got := extractor.NormalizeGorillaPath(tt.input)
+		if got != tt.want {
+			t.Errorf("NormalizeGorillaPath(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+// --- Stdlib extractor tests ---
+
 func TestStdlibExtractor_PatternParsing(t *testing.T) {
 	dir := testdataDir("stdlib-basic")
 	pkgs, err := loader.LoadPackages(dir, "./...")

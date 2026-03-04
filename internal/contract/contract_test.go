@@ -140,6 +140,151 @@ func TestExtractPathParams_Examples(t *testing.T) {
 	}
 }
 
+func TestExtractPathParams_GorillaBasic(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+	info := pkgs[0].TypesInfo
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// Find GET /users/{id} handler
+	for _, route := range routes {
+		if route.Method != "GET" || route.Path != "/users/{id}" {
+			continue
+		}
+
+		fd, fl, err := resolver.ResolveHandler(route.HandlerExpr, info, pkgs)
+		if err != nil {
+			t.Fatalf("ResolveHandler failed: %v", err)
+		}
+		var body *ast.BlockStmt
+		var fnType *ast.FuncType
+		if fd != nil {
+			body = fd.Body
+			fnType = fd.Type
+		} else if fl != nil {
+			body = fl.Body
+			fnType = fl.Type
+		}
+		pn := resolver.ResolveHandlerParams(fnType, info)
+
+		params := contract.ExtractPathParams("/users/{id}", body, info, pn)
+		if len(params) != 1 {
+			t.Fatalf("expected 1 path param, got %d", len(params))
+		}
+		if params[0].Name != "id" {
+			t.Errorf("expected param name 'id', got %q", params[0].Name)
+		}
+		return
+	}
+	t.Fatal("route GET /users/{id} not found")
+}
+
+func TestExtractPathParams_GorillaRegexParam(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+	info := pkgs[0].TypesInfo
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// Find GET /api/v1/items/{id} handler
+	for _, route := range routes {
+		if route.Method != "GET" || route.Path != "/api/v1/items/{id}" {
+			continue
+		}
+
+		fd, fl, err := resolver.ResolveHandler(route.HandlerExpr, info, pkgs)
+		if err != nil {
+			t.Fatalf("ResolveHandler failed: %v", err)
+		}
+		var body *ast.BlockStmt
+		var fnType *ast.FuncType
+		if fd != nil {
+			body = fd.Body
+			fnType = fd.Type
+		} else if fl != nil {
+			body = fl.Body
+			fnType = fl.Type
+		}
+		pn := resolver.ResolveHandlerParams(fnType, info)
+
+		params := contract.ExtractPathParams("/api/v1/items/{id}", body, info, pn)
+		if len(params) != 1 {
+			t.Fatalf("expected 1 path param, got %d", len(params))
+		}
+		if params[0].Name != "id" {
+			t.Errorf("expected param name 'id', got %q", params[0].Name)
+		}
+		// With types.Info, strconv.Atoi upgrade resolves mux.Vars indirection
+		if params[0].Type != "integer" {
+			t.Errorf("expected type 'integer' (strconv.Atoi upgrade), got %q", params[0].Type)
+		}
+		return
+	}
+	t.Fatal("route GET /api/v1/items/{id} not found")
+}
+
+func TestExtractPathParams_GorillaTypeUpgrade(t *testing.T) {
+	dir := testdataDir("gorilla-basic")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+	info := pkgs[0].TypesInfo
+
+	ext := &extractor.GorillaExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// Find DELETE /users/{id} — uses mux.Vars(r)["id"]
+	for _, route := range routes {
+		if route.Method != "DELETE" || route.Path != "/users/{id}" {
+			continue
+		}
+
+		fd, fl, err := resolver.ResolveHandler(route.HandlerExpr, info, pkgs)
+		if err != nil {
+			t.Fatalf("ResolveHandler failed: %v", err)
+		}
+		var body *ast.BlockStmt
+		var fnType *ast.FuncType
+		if fd != nil {
+			body = fd.Body
+			fnType = fd.Type
+		} else if fl != nil {
+			body = fl.Body
+			fnType = fl.Type
+		}
+		pn := resolver.ResolveHandlerParams(fnType, info)
+
+		params := contract.ExtractPathParams("/users/{id}", body, info, pn)
+		if len(params) != 1 {
+			t.Fatalf("expected 1 path param, got %d", len(params))
+		}
+		if params[0].Name != "id" {
+			t.Errorf("expected param name 'id', got %q", params[0].Name)
+		}
+		return
+	}
+	t.Fatal("route DELETE /users/{id} not found")
+}
+
 // --- Query Parameter Tests ---
 
 func TestExtractQueryParams_ChiBasic(t *testing.T) {

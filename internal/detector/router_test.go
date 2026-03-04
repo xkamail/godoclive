@@ -53,6 +53,23 @@ func TestDetectRouter_StdlibBasic(t *testing.T) {
 	}
 }
 
+func TestDetectRouter_GorillaBasic(t *testing.T) {
+	dir := testdataPath("gorilla-basic")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		t.Skipf("testdata dir does not exist: %s", dir)
+	}
+
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	kind := detector.DetectRouter(pkgs)
+	if kind != detector.RouterKindGorilla {
+		t.Errorf("expected RouterKindGorilla, got %q", kind)
+	}
+}
+
 func TestDetectRouter_NilPackages(t *testing.T) {
 	kind := detector.DetectRouter(nil)
 	if kind != detector.RouterKindUnknown {
