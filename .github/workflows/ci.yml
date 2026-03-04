@@ -34,7 +34,7 @@ jobs:
         run: go vet ./...
 
       - name: "Generate coverage"
-        run: go test -coverprofile=coverage.txt
+        run: go test -coverprofile=coverage.txt ./...
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
