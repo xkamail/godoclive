@@ -102,7 +102,7 @@ func BenchmarkGenerate_Folder_vs_Single(b *testing.B) {
 				Theme:      "light",
 			}
 			genErr := generator.Generate(eps, cfg)
-			os.RemoveAll(outDir)
+			_ = os.RemoveAll(outDir)
 			if genErr != nil {
 				b.Fatal(genErr)
 			}
@@ -124,7 +124,7 @@ func BenchmarkGenerate_Folder_vs_Single(b *testing.B) {
 				Theme:      "light",
 			}
 			genErr := generator.Generate(eps, cfg)
-			os.RemoveAll(outDir)
+			_ = os.RemoveAll(outDir)
 			if genErr != nil {
 				b.Fatal(genErr)
 			}
