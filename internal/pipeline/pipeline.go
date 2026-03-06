@@ -107,9 +107,19 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 
 	var deprecated bool
 
+	// The handler may live in a different package than the route registration.
+	// Use the TypesInfo from the handler's own package so that type lookups on
+	// the handler's AST nodes (param types, local vars) resolve correctly.
+	handlerInfo := info
+	if funcDecl != nil {
+		if hi := findInfoForFuncDecl(funcDecl, pkgs); hi != nil {
+			handlerInfo = hi
+		}
+	}
+
 	if funcDecl != nil {
 		handlerNode = funcDecl
-		paramNames = resolver.ResolveHandlerParams(funcDecl.Type, info)
+		paramNames = resolver.ResolveHandlerParams(funcDecl.Type, handlerInfo)
 		handlerName = funcDecl.Name.Name
 		handlerFile, handlerLine = posToFileLine(funcDecl.Pos(), pkgs)
 		// Check for // Deprecated: comment on the handler.
@@ -123,14 +133,14 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 		}
 	} else if funcLit != nil {
 		handlerNode = funcLit
-		paramNames = resolver.ResolveHandlerParams(funcLit.Type, info)
+		paramNames = resolver.ResolveHandlerParams(funcLit.Type, handlerInfo)
 		handlerName = "anonymous"
 		handlerFile, handlerLine = posToFileLine(funcLit.Pos(), pkgs)
 	}
 
 	// Resolve package from the function's object if possible.
 	if funcDecl != nil {
-		if obj, ok := info.Defs[funcDecl.Name]; ok && obj != nil {
+		if obj, ok := handlerInfo.Defs[funcDecl.Name]; ok && obj != nil {
 			if fn, ok := obj.(*types.Func); ok && fn.Pkg() != nil {
 				handlerPkg = fn.Pkg().Path()
 			}
@@ -147,7 +157,7 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 	}
 
 	// 5. Extract contract (params, body, responses).
-	req, responses, unresolved := contract.ExtractContract(route, handlerNode, info, paramNames, pkgs)
+	req, responses, unresolved := contract.ExtractContract(route, handlerNode, handlerInfo, paramNames, pkgs)
 
 	// 6. Map body types using the struct mapper.
 	pkg := findPackageForRoute(route, pkgs)
@@ -312,6 +322,29 @@ func tagFromPath(path string) string {
 		return seg
 	}
 	return ""
+}
+
+// findInfoForFuncDecl returns the TypesInfo for the package that contains fd by
+// searching for it by pointer equality across all loaded packages. This is
+// necessary when a handler is declared in a different package than the route
+// registration: the route's info has no type data for the handler's AST nodes.
+func findInfoForFuncDecl(fd *ast.FuncDecl, pkgs []*packages.Package) *types.Info {
+	var result *types.Info
+	packages.Visit(pkgs, func(pkg *packages.Package) bool {
+		if result != nil || pkg.TypesInfo == nil {
+			return result == nil
+		}
+		for _, file := range pkg.Syntax {
+			for _, decl := range file.Decls {
+				if decl == fd {
+					result = pkg.TypesInfo
+					return false
+				}
+			}
+		}
+		return true
+	}, nil)
+	return result
 }
 
 // posToFileLine converts a token.Pos to file path and line number.
