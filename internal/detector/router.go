@@ -16,6 +16,7 @@ const (
 	RouterKindStdlib  RouterKind = "stdlib"
 	RouterKindGorilla RouterKind = "gorilla"
 	RouterKindEcho    RouterKind = "echo"
+	RouterKindFiber   RouterKind = "fiber"
 	RouterKindUnknown RouterKind = "unknown"
 )
 
@@ -25,7 +26,7 @@ const (
 // Stdlib detection requires actual route registration calls (http.HandleFunc,
 // http.Handle, http.NewServeMux), not just net/http imports.
 func DetectRouter(pkgs []*packages.Package) RouterKind {
-	var chiImports, ginImports, gorillaImports, echoImports int
+	var chiImports, ginImports, gorillaImports, echoImports, fiberImports int
 
 	packages.Visit(pkgs, func(pkg *packages.Package) bool {
 		for imp := range pkg.Imports {
@@ -41,6 +42,9 @@ func DetectRouter(pkgs []*packages.Package) RouterKind {
 			if isEchoImport(imp) {
 				echoImports++
 			}
+			if isFiberImport(imp) {
+				fiberImports++
+			}
 		}
 		return true
 	}, nil)
@@ -54,6 +58,8 @@ func DetectRouter(pkgs []*packages.Package) RouterKind {
 		return RouterKindGorilla
 	case echoImports > 0:
 		return RouterKindEcho
+	case fiberImports > 0:
+		return RouterKindFiber
 	}
 
 	// No third-party router found. Check for stdlib mux usage.
@@ -132,4 +138,9 @@ func isEchoImport(path string) bool {
 	return path == "github.com/labstack/echo/v4" ||
 		strings.HasPrefix(path, "github.com/labstack/echo/v4/") ||
 		path == "github.com/labstack/echo"
+}
+
+func isFiberImport(path string) bool {
+	return path == "github.com/gofiber/fiber/v2" ||
+		strings.HasPrefix(path, "github.com/gofiber/fiber/v2/")
 }

@@ -198,8 +198,16 @@ func detectCallPattern(call *ast.CallExpr, info *types.Info) (model.AuthScheme, 
 			headerName := stringLitValue(call.Args[0])
 			switch headerName {
 			case "Authorization":
-				// Could be bearer or apikey — check surrounding code for "Bearer " prefix.
-				// Default to bearer.
+				return model.AuthBearer, true
+			case "X-API-Key", "Api-Key", "X-Api-Key":
+				return model.AuthAPIKey, true
+			}
+		}
+		// c.Get("Authorization") — Fiber direct header access on context
+		if _, ok := sel.X.(*ast.Ident); ok && len(call.Args) == 1 {
+			headerName := stringLitValue(call.Args[0])
+			switch headerName {
+			case "Authorization":
 				return model.AuthBearer, true
 			case "X-API-Key", "Api-Key", "X-Api-Key":
 				return model.AuthAPIKey, true

@@ -58,6 +58,15 @@ func ExtractHeaders(body *ast.BlockStmt, info *types.Info, paramNames resolver.H
 			return false
 		}
 
+		// c.Get("X-Key") — fiber
+		if name, ok := matchGinSimpleHeader(call, paramNames.FiberCtx); ok {
+			if !skipHeaders[strings.ToLower(name)] && !seen[name] {
+				params = append(params, model.ParamDef{Name: name, In: "header", Type: "string"})
+				seen[name] = true
+			}
+			return false
+		}
+
 		return true
 	})
 
@@ -103,6 +112,27 @@ func matchGinGetHeader(call *ast.CallExpr, ginCtx string) (string, bool) {
 	}
 	recv, ok := sel.X.(*ast.Ident)
 	if !ok || recv.Name != ginCtx {
+		return "", false
+	}
+	if len(call.Args) == 1 {
+		if v := extractStringLit(call.Args[0]); v != "" {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// matchGinSimpleHeader matches c.Get("X-Key") — used by Fiber for header access.
+func matchGinSimpleHeader(call *ast.CallExpr, ctxName string) (string, bool) {
+	if ctxName == "" {
+		return "", false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Get" {
+		return "", false
+	}
+	recv, ok := sel.X.(*ast.Ident)
+	if !ok || recv.Name != ctxName {
 		return "", false
 	}
 	if len(call.Args) == 1 {

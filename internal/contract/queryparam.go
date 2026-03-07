@@ -88,6 +88,15 @@ func ExtractQueryParams(body *ast.BlockStmt, info *types.Info, paramNames resolv
 				return false
 			}
 
+			// --- fiber patterns ---
+
+			// c.Query("key")
+			if name, ok := matchGinSimple(call, paramNames.FiberCtx, "Query"); ok && !seen[name] {
+				params = append(params, model.ParamDef{Name: name, In: "query", Type: "string"})
+				seen[name] = true
+				return false
+			}
+
 			return true
 		})
 	}

@@ -113,6 +113,13 @@ func upgradePathParamTypes(params []model.ParamDef, body *ast.BlockStmt, pn reso
 			}
 		}
 
+		// varName := c.Params("id") / c.Param("id") / chi.URLParam(r, "id") — direct assignment
+		if rhs, ok := assign.Rhs[0].(*ast.CallExpr); ok {
+			if name := extractPathParamName(rhs, pn); name != "" {
+				varToParam[lhs.Name] = name
+			}
+		}
+
 		// id := vars["key"] or id := mux.Vars(r)["key"]
 		if idx, ok := assign.Rhs[0].(*ast.IndexExpr); ok {
 			// Direct: mux.Vars(r)["key"]
@@ -225,6 +232,15 @@ func extractPathParamName(expr ast.Expr, pn resolver.HandlerParamNames) string {
 	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 		if ident, ok := sel.X.(*ast.Ident); ok {
 			if ident.Name == pn.EchoCtx && sel.Sel.Name == "Param" && len(call.Args) == 1 {
+				return extractStringLit(call.Args[0])
+			}
+		}
+	}
+
+	// c.Params("name") — fiber (plural)
+	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+		if ident, ok := sel.X.(*ast.Ident); ok {
+			if ident.Name == pn.FiberCtx && sel.Sel.Name == "Params" && len(call.Args) == 1 {
 				return extractStringLit(call.Args[0])
 			}
 		}

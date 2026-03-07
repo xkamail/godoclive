@@ -57,6 +57,9 @@ func ExtractResponses(body *ast.BlockStmt, info *types.Info, paramNames resolver
 	if paramNames.EchoCtx != "" {
 		return extractEchoResponses(body, info, paramNames, pkgs)
 	}
+	if paramNames.FiberCtx != "" {
+		return extractFiberResponses(body, info, paramNames)
+	}
 	return extractHTTPResponses(body, info, paramNames, pkgs)
 }
 
@@ -281,6 +284,154 @@ func extractEchoResponses(body *ast.BlockStmt, info *types.Info, pn resolver.Han
 						Description: descriptionForStatus(code),
 					})
 				}
+			}
+		}
+
+		return true
+	})
+
+	return responses, unresolved
+}
+
+// --- Fiber response extraction ---
+
+// matchFiberStatusChain detects c.Status(code).JSON(body) and similar chains.
+// Returns the inner c.Status(code) call, the terminal method name, and true on match.
+func matchFiberStatusChain(call *ast.CallExpr, fiberCtx string) (statusCall *ast.CallExpr, method string, ok bool) {
+	sel, ok2 := call.Fun.(*ast.SelectorExpr)
+	if !ok2 {
+		return nil, "", false
+	}
+	// sel.X must be a CallExpr — the c.Status(code) inner call.
+	innerCall, ok2 := sel.X.(*ast.CallExpr)
+	if !ok2 {
+		return nil, "", false
+	}
+	innerSel, ok2 := innerCall.Fun.(*ast.SelectorExpr)
+	if !ok2 || innerSel.Sel.Name != "Status" {
+		return nil, "", false
+	}
+	recv, ok2 := innerSel.X.(*ast.Ident)
+	if !ok2 || recv.Name != fiberCtx {
+		return nil, "", false
+	}
+	if len(innerCall.Args) != 1 {
+		return nil, "", false
+	}
+	return innerCall, sel.Sel.Name, true
+}
+
+func extractFiberResponses(body *ast.BlockStmt, info *types.Info, pn resolver.HandlerParamNames) ([]model.ResponseDef, []string) {
+	var responses []model.ResponseDef
+	var unresolved []string
+	seen := make(map[int]bool)
+
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+
+		// --- Chained: c.Status(code).JSON(body) / .SendString(str) / .Send(data) ---
+		if statusCall, method, ok := matchFiberStatusChain(call, pn.FiberCtx); ok {
+			code := ResolveStatusCode(statusCall.Args[0], info)
+			if code == -1 {
+				unresolved = append(unresolved, unresolvedStatusMsg(call, info))
+				return true
+			}
+			if seen[code] {
+				return true
+			}
+			seen[code] = true
+
+			switch method {
+			case "JSON":
+				resp := model.ResponseDef{
+					StatusCode:  code,
+					ContentType: "application/json",
+					Source:      "explicit",
+					Description: descriptionForStatus(code),
+				}
+				if len(call.Args) >= 1 {
+					if bodyType := resolveBodyType(call.Args[0], info); bodyType != nil {
+						resp.Body = typeRefDef(bodyType)
+					}
+				}
+				responses = append(responses, resp)
+			case "SendString":
+				responses = append(responses, model.ResponseDef{
+					StatusCode:  code,
+					ContentType: "text/plain",
+					Source:      "explicit",
+					Description: descriptionForStatus(code),
+				})
+			case "Send":
+				responses = append(responses, model.ResponseDef{
+					StatusCode:  code,
+					Source:      "explicit",
+					Description: descriptionForStatus(code),
+				})
+			}
+			return false
+		}
+
+		// --- Direct calls on c ---
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		recv, ok := sel.X.(*ast.Ident)
+		if !ok || recv.Name != pn.FiberCtx {
+			return true
+		}
+
+		switch sel.Sel.Name {
+		case "JSON":
+			// c.JSON(body) — implicit 200
+			if !seen[200] {
+				seen[200] = true
+				resp := model.ResponseDef{
+					StatusCode:  200,
+					ContentType: "application/json",
+					Source:      "explicit",
+					Description: descriptionForStatus(200),
+				}
+				if len(call.Args) >= 1 {
+					if bodyType := resolveBodyType(call.Args[0], info); bodyType != nil {
+						resp.Body = typeRefDef(bodyType)
+					}
+				}
+				responses = append(responses, resp)
+			}
+
+		case "SendStatus":
+			// c.SendStatus(code) — status only, no body
+			if len(call.Args) >= 1 {
+				code := ResolveStatusCode(call.Args[0], info)
+				if code == -1 {
+					unresolved = append(unresolved, unresolvedStatusMsg(call, info))
+					return true
+				}
+				if !seen[code] {
+					seen[code] = true
+					responses = append(responses, model.ResponseDef{
+						StatusCode:  code,
+						Source:      "explicit",
+						Description: descriptionForStatus(code),
+					})
+				}
+			}
+
+		case "SendString":
+			// c.SendString(str) — implicit 200, text/plain
+			if !seen[200] {
+				seen[200] = true
+				responses = append(responses, model.ResponseDef{
+					StatusCode:  200,
+					ContentType: "text/plain",
+					Source:      "explicit",
+					Description: descriptionForStatus(200),
+				})
 			}
 		}
 

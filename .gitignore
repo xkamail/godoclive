@@ -44,6 +44,8 @@ technical_spec.md
 /gorilla-e2e-docs
 /echo-e2e-docs
 /echo-e2e-test
+/fiber-e2e-docs
+/fiber-e2e-test
 
 # for agent
 /pr-description

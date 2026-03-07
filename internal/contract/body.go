@@ -42,6 +42,21 @@ func ExtractBody(body *ast.BlockStmt, info *types.Info, paramNames resolver.Hand
 			return false
 		}
 
+		// --- fiber patterns ---
+
+		// c.BodyParser(&req)
+		if t, ok := matchGinBindMethod(call, info, paramNames.FiberCtx, "BodyParser"); ok {
+			result.BodyType = t
+			result.ContentType = "application/json"
+			return false
+		}
+
+		// c.QueryParser(&q) — promotes struct fields to QueryParams
+		if t, ok := matchGinBindMethod(call, info, paramNames.FiberCtx, "QueryParser"); ok {
+			result.BindQueryType = t
+			return false
+		}
+
 		// --- net/http JSON patterns ---
 
 		// json.NewDecoder(r.Body).Decode(&req)

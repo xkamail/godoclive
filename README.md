@@ -73,7 +73,7 @@ GoDoc Live has no drift problem — it reads the source of truth directly.
 | **net/http** (Go 1.22+ stdlib) | Done | `"METHOD /path"` patterns, `r.PathValue()`, `http.Handler` |
 | **gorilla/mux** (`gorilla/mux`) | Done | `HandleFunc().Methods()`, `PathPrefix().Subrouter()`, `mux.Vars()`, regex params |
 | **echo** (`labstack/echo/v4`) | Done | Groups, Use chains, `c.Bind()`, `c.QueryParam()`, `c.JSON()`, `c.NoContent()` |
-| fiber | Planned | — |
+| **fiber** (`gofiber/fiber/v2`) | Done | Groups, Use chains, `c.BodyParser()`, `c.Query()`, `c.Params()`, `c.Status().JSON()`, `c.SendStatus()` |
 
 ## CLI Reference
 
@@ -231,7 +231,7 @@ openapi:
 ```
 
 1. **Load** — Uses `go/packages` to load and type-check your Go source code
-2. **Detect** — Identifies the router framework (chi, gin, gorilla/mux, echo, or stdlib) from imports
+2. **Detect** — Identifies the router framework (chi, gin, gorilla/mux, echo, fiber, or stdlib) from imports
 3. **Extract** — Walks `main()` and `init()` AST to find route registrations
 4. **Resolve** — Resolves handler expressions to function declarations
 5. **Contract** — Extracts path params, query params, headers, body, and responses from handler ASTs
@@ -319,7 +319,7 @@ Single-file mode writes more memory (≈10× more per run) because all CSS, JS, 
 | **1** | chi + gin + net/http stdlib + gorilla/mux, full contract extraction, helper tracing, interactive docs UI | Done |
 | **2** | OpenAPI 3.1.0 export (`openapi` command + `--openapi` flag) | Done |
 | **2b** | echo | Done |
-| **2c** | fiber | Planned |
+| **2c** | fiber | Done |
 | **3** | VS Code extension, GitHub Action integration | Planned |
 | **4** | Multi-service gateway view, API version diff | Planned |
 

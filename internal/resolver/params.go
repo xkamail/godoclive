@@ -8,10 +8,11 @@ import (
 // HandlerParamNames holds the local variable names for the HTTP primitives
 // inside a specific handler function body.
 type HandlerParamNames struct {
-	Writer  string // name of the http.ResponseWriter param
-	Request string // name of the *http.Request param
-	GinCtx  string // name of the *gin.Context param
-	EchoCtx string // name of the echo.Context param
+	Writer   string // name of the http.ResponseWriter param
+	Request  string // name of the *http.Request param
+	GinCtx   string // name of the *gin.Context param
+	EchoCtx  string // name of the echo.Context param
+	FiberCtx string // name of the *fiber.Ctx param
 }
 
 // ResolveHandlerParams inspects a function's parameter list and determines
@@ -47,6 +48,8 @@ func ResolveHandlerParams(fn *ast.FuncType, info *types.Info) HandlerParamNames 
 				names.GinCtx = name.Name
 			case isEchoContext(t):
 				names.EchoCtx = name.Name
+			case isFiberContext(t):
+				names.FiberCtx = name.Name
 			}
 		}
 	}
@@ -119,6 +122,22 @@ func isGinContext(t types.Type) bool {
 	}
 	obj := named.Obj()
 	return obj.Pkg() != nil && obj.Pkg().Path() == "github.com/gin-gonic/gin" && obj.Name() == "Context"
+}
+
+// isFiberContext checks whether t is *fiber.Ctx.
+func isFiberContext(t types.Type) bool {
+	ptr, ok := t.(*types.Pointer)
+	if !ok {
+		return false
+	}
+	named, ok := ptr.Elem().(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj.Pkg() != nil &&
+		obj.Pkg().Path() == "github.com/gofiber/fiber/v2" &&
+		obj.Name() == "Ctx"
 }
 
 // isEchoContext checks whether t is echo.Context (an interface, not a pointer).
