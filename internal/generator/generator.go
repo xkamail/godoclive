@@ -489,9 +489,10 @@ func RenderSingleHTML(endpoints []model.EndpointDef, cfg GeneratorConfig) ([]byt
 	css := fontFaceDecls(true) + "\n" + string(GetCSS())
 	html = strings.Replace(html, `<link rel="stylesheet" href="style.css">`,
 		"<style>\n"+css+"\n</style>", 1)
+	// Inject API data before inlining JS so the <script src="app.js"> anchor exists.
+	html = injectAPIData(html, jsonBytes)
 	html = strings.Replace(html, `<script src="app.js"></script>`,
 		"<script>\n"+string(GetJS())+"\n</script>", 1)
-	html = injectAPIData(html, jsonBytes)
 	theme := cfg.Theme
 	if theme == "" {
 		theme = "dark"
