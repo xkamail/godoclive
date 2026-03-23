@@ -785,10 +785,13 @@ func TestExtractContract_ArpcHandler(t *testing.T) {
 			}
 
 		case "POST /auth.me":
-			if req.Body == nil {
-				t.Errorf("%s: expected request body (MeParams), got nil", key)
-			} else if req.Body.Name != "MeParams" {
-				t.Errorf("%s: expected body type 'MeParams', got %q", key, req.Body.Name)
+			// Context-only handler: func(context.Context) (*MeResult, error)
+			// Should have no request body.
+			if req.Body != nil {
+				t.Errorf("%s: expected no request body, got %q", key, req.Body.Name)
+			}
+			if req.ContentType != "" {
+				t.Errorf("%s: expected empty content-type, got %q", key, req.ContentType)
 			}
 			if len(responses) > 0 && responses[0].Body != nil {
 				resultField := responses[0].Body.Fields[1]

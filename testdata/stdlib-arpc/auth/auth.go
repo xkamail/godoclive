@@ -10,9 +10,6 @@ func ProviderRedirect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusFound)
 }
 
-// MeParams is the request for getting the current user.
-type MeParams struct{}
-
 // MeResult is the response for getting the current user.
 type MeResult struct {
 	ID    string `json:"id"`
@@ -21,6 +18,6 @@ type MeResult struct {
 }
 
 // Me returns the current authenticated user.
-func Me(ctx context.Context, p *MeParams) (*MeResult, error) {
+func Me(ctx context.Context) (*MeResult, error) {
 	return &MeResult{ID: "1", Name: "user", Email: "user@example.com"}, nil
 }

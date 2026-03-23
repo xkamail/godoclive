@@ -111,21 +111,28 @@ func ExtractContract(
 	return req, responses, unresolved
 }
 
-// extractArpcContract handles arpc-style handlers with the signature:
+// extractArpcContract handles arpc-style handlers with the signatures:
 //
 //	func(context.Context, *ParamsType) (*ResultType, error)
+//	func(context.Context) (*ResultType, error)
 //
-// The second parameter is the request body type and the first return value
-// is the response body type. It also scans the handler body for arpc.NewError
-// and arpc.NewErrorCode calls to extract specific error codes.
+// When the second parameter is present, it becomes the request body type.
+// When absent, the endpoint has no request body (context-only handler).
+// The first return value is the response body type.
+// It also scans the handler body for arpc.NewError and arpc.NewErrorCode
+// calls to extract specific error codes.
 // Returns false if the signature does not match.
 func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *ast.BlockStmt, info *types.Info) (model.RequestDef, []model.ResponseDef, bool) {
 	if info == nil || fnType == nil {
 		return model.RequestDef{}, nil, false
 	}
 
-	// Require exactly 2 params: (context.Context, *T)
-	if fnType.Params == nil || fnType.Params.NumFields() != 2 {
+	// Require 1 or 2 params: (context.Context) or (context.Context, *T)
+	numParams := 0
+	if fnType.Params != nil {
+		numParams = fnType.Params.NumFields()
+	}
+	if numParams < 1 || numParams > 2 {
 		return model.RequestDef{}, nil, false
 	}
 
@@ -146,14 +153,17 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 		return model.RequestDef{}, nil, false
 	}
 
-	// Second param is the request body type.
-	bodyType := info.TypeOf(fnType.Params.List[1].Type)
-	if bodyType == nil {
-		return model.RequestDef{}, nil, false
-	}
-	// Dereference pointer to get the underlying struct type.
-	if ptr, ok := bodyType.(*types.Pointer); ok {
-		bodyType = ptr.Elem()
+	// Second param (if present) is the request body type.
+	var bodyType types.Type
+	if numParams == 2 {
+		bodyType = info.TypeOf(fnType.Params.List[1].Type)
+		if bodyType == nil {
+			return model.RequestDef{}, nil, false
+		}
+		// Dereference pointer to get the underlying struct type.
+		if ptr, ok := bodyType.(*types.Pointer); ok {
+			bodyType = ptr.Elem()
+		}
 	}
 
 	// First return is the response body type.
@@ -169,9 +179,11 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 	pathParams := ExtractPathParams(route.Path, nil, info, resolver.HandlerParamNames{})
 
 	req := model.RequestDef{
-		PathParams:  pathParams,
-		Body:        typeRefDef(bodyType),
-		ContentType: "application/json",
+		PathParams: pathParams,
+	}
+	if bodyType != nil {
+		req.Body = typeRefDef(bodyType)
+		req.ContentType = "application/json"
 	}
 
 	// Build arpc envelope response: {"ok": true, "result": <ResultType>}
