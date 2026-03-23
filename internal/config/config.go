@@ -17,9 +17,23 @@ type Config struct {
 	Theme           string        `yaml:"theme"`
 	Overrides       []Override    `yaml:"overrides"`
 	Exclude         []string      `yaml:"exclude"`
+	Mounts          []MountConfig `yaml:"mounts"`
 	Auth            AuthConfig    `yaml:"auth"`
 	ResponseHelpers []string      `yaml:"response_helpers"`
 	OpenAPI         OpenAPIConfig `yaml:"openapi"`
+}
+
+// MountConfig maps a package to a path prefix. Endpoints whose handler
+// package contains the given string get the prefix prepended to their path.
+//
+// Example:
+//
+//	mounts:
+//	  - package: backoffice
+//	    prefix: /backoffice
+type MountConfig struct {
+	Package string `yaml:"package"` // matched against handler package path (contains)
+	Prefix  string `yaml:"prefix"`  // prepended to endpoint path
 }
 
 // OpenAPIConfig holds OpenAPI-specific settings from the config file.
@@ -86,6 +100,27 @@ func LoadConfig(dir string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// ApplyMounts prepends a path prefix to endpoints whose handler package
+// matches a mount config entry. Matching uses strings.Contains so short
+// names like "backoffice" match "github.com/org/repo/backoffice/game".
+func ApplyMounts(endpoints []model.EndpointDef, mounts []MountConfig) []model.EndpointDef {
+	if len(mounts) == 0 {
+		return endpoints
+	}
+	for i := range endpoints {
+		for _, m := range mounts {
+			if m.Package == "" || m.Prefix == "" {
+				continue
+			}
+			if strings.Contains(endpoints[i].Package, m.Package) {
+				endpoints[i].Path = strings.TrimSuffix(m.Prefix, "/") + endpoints[i].Path
+				break
+			}
+		}
+	}
+	return endpoints
 }
 
 // ApplyExclusions removes endpoints matching any of the given glob patterns.
