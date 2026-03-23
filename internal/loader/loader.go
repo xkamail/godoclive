@@ -21,7 +21,8 @@ func LoadPackages(dir, pattern string) ([]*packages.Package, error) {
 			packages.NeedTypes |
 			packages.NeedTypesInfo |
 			packages.NeedDeps |
-			packages.NeedImports,
+			packages.NeedImports |
+			packages.NeedModule,
 	}
 
 	pkgs, err := packages.Load(cfg, pattern)

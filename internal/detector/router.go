@@ -100,12 +100,17 @@ func hasStdlibMuxUsage(pkgs []*packages.Package) bool {
 						return false
 					}
 				}
+				// httpmux.New() — custom ServeMux wrapper
+				if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "httpmux" && name == "New" {
+					found = true
+					return false
+				}
 				// mux.HandleFunc() / mux.Handle() — any variable calling HandleFunc/Handle
 				if name == "HandleFunc" || name == "Handle" {
 					if _, ok := sel.X.(*ast.Ident); ok {
-						// Check that the package imports net/http
+						// Check that the package imports net/http or httpmux
 						for imp := range pkg.Imports {
-							if imp == "net/http" {
+							if imp == "net/http" || isHTTPMuxImport(imp) {
 								found = true
 								return false
 							}
@@ -143,4 +148,13 @@ func isEchoImport(path string) bool {
 func isFiberImport(path string) bool {
 	return path == "github.com/gofiber/fiber/v2" ||
 		strings.HasPrefix(path, "github.com/gofiber/fiber/v2/")
+}
+
+// isHTTPMuxImport returns true if the import path is a known ServeMux wrapper
+// package (e.g. github.com/moonrhythm/httpmux).
+func isHTTPMuxImport(path string) bool {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:] == "httpmux"
+	}
+	return path == "httpmux"
 }

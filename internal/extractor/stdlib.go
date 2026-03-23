@@ -3,6 +3,7 @@ package extractor
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -13,13 +14,36 @@ import (
 type StdlibExtractor struct{}
 
 // Extract walks all packages and extracts stdlib route registrations.
+// It also detects cross-package mount patterns where a function in another
+// package receives a grouped mux (e.g. backoffice.Mount(mux.Group("/backoffice"), am))
+// and propagates the group prefix to routes registered in that function.
 func (e *StdlibExtractor) Extract(pkgs []*packages.Package) ([]RawRoute, error) {
+	// Phase 1: Scan root packages for cross-package mount calls that pass a
+	// .Group("/prefix") result as a function argument.
+	mountPrefixes := scanMountPrefixes(pkgs)
+
+	// Determine module path so we only walk same-module packages.
+	modPath := inferModulePath(pkgs)
+
+	// Phase 2: Walk all module-local packages for route registrations.
 	var routes []RawRoute
 
-	for _, pkg := range pkgs {
-		if !isStdlibHTTPPackage(pkg) {
-			continue
+	visited := make(map[string]bool)
+	packages.Visit(pkgs, func(pkg *packages.Package) bool {
+		if visited[pkg.PkgPath] {
+			return false
 		}
+		visited[pkg.PkgPath] = true
+
+		// Skip non-local packages (third-party dependencies).
+		if modPath != "" && !strings.HasPrefix(pkg.PkgPath, modPath) {
+			return true
+		}
+
+		if !isStdlibHTTPPackage(pkg) || len(pkg.Syntax) == 0 {
+			return true
+		}
+
 		for _, file := range pkg.Syntax {
 			fpath := pkg.Fset.Position(file.Pos()).Filename
 			w := &stdlibWalker{
@@ -37,14 +61,159 @@ func (e *StdlibExtractor) Extract(pkgs []*packages.Package) ([]RawRoute, error) 
 				if strings.HasPrefix(fn.Name.Name, "Test") || strings.HasPrefix(fn.Name.Name, "Example") {
 					continue
 				}
+
+				// Check if this function has a mount prefix from a cross-package call.
+				key := pkg.PkgPath + "." + fn.Name.Name
+				w.funcPrefix = mountPrefixes[key]
+
 				w.collectMuxParams(fn)
 				w.walkBlock(fn.Body.List, nil)
+
+				w.funcPrefix = ""
 			}
 			routes = append(routes, w.routes...)
 		}
-	}
+
+		return true
+	}, nil)
 
 	return routes, nil
+}
+
+// scanMountPrefixes scans all packages for cross-package function calls
+// where a .Group("/prefix") result is passed as the first argument.
+// Returns a map of "pkgPath.FuncName" → prefix.
+//
+// Handles two patterns:
+//   - Inline:   pkg.Func(mux.Group("/prefix"), ...)
+//   - Variable: g := mux.Group("/prefix"); pkg.Func(g, ...)
+func scanMountPrefixes(pkgs []*packages.Package) map[string]string {
+	prefixes := make(map[string]string)
+
+	for _, pkg := range pkgs {
+		if pkg.TypesInfo == nil || len(pkg.Syntax) == 0 {
+			continue
+		}
+		for _, file := range pkg.Syntax {
+			// First collect local group variable assignments for variable-based lookups.
+			localGroups := collectLocalGroups(file)
+
+			ast.Inspect(file, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+
+				// Look for pkg.Func(arg, ...) where arg is a group.
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || len(call.Args) == 0 {
+					return true
+				}
+
+				// Extract group prefix from the first argument.
+				prefix := extractGroupPrefix(call.Args[0], localGroups)
+				if prefix == "" {
+					return true
+				}
+
+				// Resolve the target package from the selector.
+				pkgIdent, ok := sel.X.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				obj := pkg.TypesInfo.Uses[pkgIdent]
+				if obj == nil {
+					return true
+				}
+				pkgName, ok := obj.(*types.PkgName)
+				if !ok {
+					return true
+				}
+
+				targetPkg := pkgName.Imported().Path()
+				targetFunc := sel.Sel.Name
+				key := targetPkg + "." + targetFunc
+				prefixes[key] = prefix
+
+				return true
+			})
+		}
+	}
+
+	return prefixes
+}
+
+// collectLocalGroups scans a file for assignments like g := mux.Group("/prefix")
+// and returns a map of variable name → prefix.
+func collectLocalGroups(file *ast.File) map[string]string {
+	groups := make(map[string]string)
+	ast.Inspect(file, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || len(assign.Lhs) == 0 || len(assign.Rhs) == 0 {
+			return true
+		}
+		lhs, ok := assign.Lhs[0].(*ast.Ident)
+		if !ok {
+			return true
+		}
+		call, ok := assign.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Group" || len(call.Args) == 0 {
+			return true
+		}
+		if prefix := stringLitValue(call.Args[0]); prefix != "" {
+			groups[lhs.Name] = prefix
+		}
+		return true
+	})
+	return groups
+}
+
+// extractGroupPrefix extracts a group prefix from an expression.
+// Handles inline .Group("/prefix") calls and variable references.
+func extractGroupPrefix(expr ast.Expr, localGroups map[string]string) string {
+	// Inline: mux.Group("/prefix")
+	if call, ok := expr.(*ast.CallExpr); ok {
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			if sel.Sel.Name == "Group" && len(call.Args) >= 1 {
+				return stringLitValue(call.Args[0])
+			}
+		}
+	}
+
+	// Variable: g (where g = mux.Group("/prefix"))
+	if ident, ok := expr.(*ast.Ident); ok {
+		return localGroups[ident.Name]
+	}
+
+	return ""
+}
+
+// inferModulePath returns the Go module path from root packages.
+func inferModulePath(pkgs []*packages.Package) string {
+	for _, pkg := range pkgs {
+		if pkg.Module != nil {
+			return pkg.Module.Path
+		}
+	}
+	// Fallback: use shortest root package path as rough module prefix.
+	if len(pkgs) == 0 {
+		return ""
+	}
+	shortest := pkgs[0].PkgPath
+	for _, pkg := range pkgs[1:] {
+		if len(pkg.PkgPath) < len(shortest) {
+			shortest = pkg.PkgPath
+		}
+	}
+	// Strip the last path segment to get an approximate module path.
+	if idx := strings.LastIndex(shortest, "/"); idx > 0 {
+		return shortest[:idx]
+	}
+	return shortest
 }
 
 // isStdlibHTTPPackage returns true if the package imports net/http or a
@@ -79,11 +248,12 @@ type groupInfo struct {
 
 // stdlibWalker extracts stdlib routes from a single file.
 type stdlibWalker struct {
-	fset    *token.FileSet
-	file    string
-	routes  []RawRoute
-	muxVars map[string]bool        // tracks variables assigned from http.NewServeMux()
-	groups  map[string]*groupInfo  // tracks variables from mux.Group(prefix, mw...)
+	fset       *token.FileSet
+	file       string
+	routes     []RawRoute
+	muxVars    map[string]bool       // tracks variables assigned from http.NewServeMux() or httpmux.New()
+	groups     map[string]*groupInfo // tracks variables from mux.Group(prefix, mw...)
+	funcPrefix string                // prefix from cross-package mount call
 }
 
 // walkBlock walks a list of statements looking for stdlib route registrations.
@@ -104,7 +274,8 @@ func (w *stdlibWalker) walkBlock(stmts []ast.Stmt, parentMW []ast.Expr) {
 	}
 }
 
-// handleAssign detects mux := http.NewServeMux() and x := mux.Group(...) assignments.
+// handleAssign detects mux := http.NewServeMux(), mux := httpmux.New(),
+// and x := mux.Group(...) assignments.
 func (w *stdlibWalker) handleAssign(assign *ast.AssignStmt) {
 	if len(assign.Lhs) == 0 || len(assign.Rhs) == 0 {
 		return
@@ -123,9 +294,14 @@ func (w *stdlibWalker) handleAssign(assign *ast.AssignStmt) {
 		return
 	}
 
-	// mux := http.NewServeMux()
 	if ident, ok := sel.X.(*ast.Ident); ok {
+		// mux := http.NewServeMux()
 		if ident.Name == "http" && sel.Sel.Name == "NewServeMux" {
+			w.muxVars[lhs.Name] = true
+			return
+		}
+		// mux := httpmux.New()
+		if ident.Name == "httpmux" && sel.Sel.Name == "New" {
 			w.muxVars[lhs.Name] = true
 			return
 		}
@@ -162,32 +338,46 @@ func (w *stdlibWalker) handleAssign(assign *ast.AssignStmt) {
 	}
 }
 
-// collectMuxParams scans function parameters for *http.ServeMux and adds
-// their names to muxVars so that mux.HandleFunc/mux.Handle calls are recognized
-// when the ServeMux is passed as a parameter (e.g. func Mount(mux *http.ServeMux, ...)).
+// collectMuxParams scans function parameters for *http.ServeMux or *httpmux.Mux
+// and adds their names to muxVars so that mux.HandleFunc/mux.Handle calls are
+// recognized when the ServeMux is passed as a parameter.
 func (w *stdlibWalker) collectMuxParams(fn *ast.FuncDecl) {
 	if fn.Type.Params == nil {
 		return
 	}
 	for _, field := range fn.Type.Params.List {
-		star, ok := field.Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		sel, ok := star.X.(*ast.SelectorExpr)
-		if !ok {
-			continue
-		}
-		ident, ok := sel.X.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		if ident.Name == "http" && sel.Sel.Name == "ServeMux" {
+		if isMuxType(field.Type) {
 			for _, name := range field.Names {
 				w.muxVars[name.Name] = true
 			}
 		}
 	}
+}
+
+// isMuxType checks if a type expression represents a known HTTP mux type.
+// Handles *http.ServeMux, *httpmux.Mux, and similar wrapper types.
+func isMuxType(expr ast.Expr) bool {
+	star, ok := expr.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := star.X.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	// *http.ServeMux
+	if ident.Name == "http" && sel.Sel.Name == "ServeMux" {
+		return true
+	}
+	// *httpmux.Mux (e.g. github.com/moonrhythm/httpmux)
+	if ident.Name == "httpmux" && sel.Sel.Name == "Mux" {
+		return true
+	}
+	return false
 }
 
 // processCall dispatches a call expression based on the method name.
@@ -232,6 +422,11 @@ func (w *stdlibWalker) addRoute(call *ast.CallExpr, middlewares []ast.Expr) {
 
 	method, path := parseStdlibPattern(pattern)
 
+	// Apply function-level mount prefix (from cross-package Group call).
+	if w.funcPrefix != "" {
+		path = strings.TrimSuffix(w.funcPrefix, "/") + path
+	}
+
 	// The handler is the last argument. Any args between pattern and handler
 	// could be considered but stdlib only takes (pattern, handler).
 	handler := call.Args[len(call.Args)-1]
@@ -263,6 +458,11 @@ func (w *stdlibWalker) addRouteWithPrefix(call *ast.CallExpr, middlewares []ast.
 	// Prepend group prefix to the path.
 	if prefix != "" {
 		path = strings.TrimSuffix(prefix, "/") + path
+	}
+
+	// Apply function-level mount prefix (from cross-package Group call).
+	if w.funcPrefix != "" {
+		path = strings.TrimSuffix(w.funcPrefix, "/") + path
 	}
 
 	handler := call.Args[len(call.Args)-1]

@@ -658,6 +658,59 @@ func TestNormalizeGorillaPath(t *testing.T) {
 	}
 }
 
+func TestStdlibExtractor_CrossPackageMount(t *testing.T) {
+	dir := testdataDir("stdlib-cross-mount")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// stdlib-cross-mount has:
+	// main.go: GET /health (root), backoffice.Mount(mux.Group("/backoffice"), am)
+	// backoffice/handler.go: POST /auth.signIn, POST /game.list, POST /game.create
+	// All backoffice routes should have /backoffice prefix applied.
+	expected := map[string]bool{
+		"GET /health":                     true,
+		"POST /backoffice/auth.signIn":    true,
+		"POST /backoffice/game.list":      true,
+		"POST /backoffice/game.create":    true,
+	}
+
+	if len(routes) != len(expected) {
+		t.Errorf("expected %d routes, got %d", len(expected), len(routes))
+		for _, r := range routes {
+			t.Logf("  found: %s %s (line %d, file %s)", r.Method, r.Path, r.Line, r.File)
+		}
+	}
+
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if !expected[key] {
+			t.Errorf("unexpected route: %s", key)
+		}
+		delete(expected, key)
+	}
+
+	for key := range expected {
+		t.Errorf("missing route: %s", key)
+	}
+
+	// Verify middleware is detected on protected routes (game.list, game.create).
+	for _, r := range routes {
+		if r.Path == "/backoffice/game.list" || r.Path == "/backoffice/game.create" {
+			if len(r.Middlewares) == 0 {
+				t.Errorf("route %s %s should have middleware from Group()", r.Method, r.Path)
+			}
+		}
+	}
+}
+
 // --- Stdlib extractor tests ---
 
 func TestStdlibExtractor_PatternParsing(t *testing.T) {
