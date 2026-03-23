@@ -26,6 +26,7 @@ func (e *StdlibExtractor) Extract(pkgs []*packages.Package) ([]RawRoute, error) 
 				fset:    pkg.Fset,
 				file:    fpath,
 				muxVars: make(map[string]bool),
+				groups:  make(map[string]*groupInfo),
 			}
 			for _, decl := range file.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
@@ -56,12 +57,19 @@ func isStdlibHTTPPackage(pkg *packages.Package) bool {
 	return false
 }
 
+// groupInfo tracks prefix and middleware for a mux group variable.
+type groupInfo struct {
+	prefix      string
+	middlewares []ast.Expr
+}
+
 // stdlibWalker extracts stdlib routes from a single file.
 type stdlibWalker struct {
 	fset    *token.FileSet
 	file    string
 	routes  []RawRoute
-	muxVars map[string]bool // tracks variables assigned from http.NewServeMux()
+	muxVars map[string]bool        // tracks variables assigned from http.NewServeMux()
+	groups  map[string]*groupInfo  // tracks variables from mux.Group(prefix, mw...)
 }
 
 // walkBlock walks a list of statements looking for stdlib route registrations.
@@ -82,7 +90,7 @@ func (w *stdlibWalker) walkBlock(stmts []ast.Stmt, parentMW []ast.Expr) {
 	}
 }
 
-// handleAssign detects mux := http.NewServeMux() assignments.
+// handleAssign detects mux := http.NewServeMux() and x := mux.Group(...) assignments.
 func (w *stdlibWalker) handleAssign(assign *ast.AssignStmt) {
 	if len(assign.Lhs) == 0 || len(assign.Rhs) == 0 {
 		return
@@ -95,15 +103,48 @@ func (w *stdlibWalker) handleAssign(assign *ast.AssignStmt) {
 	if !ok {
 		return
 	}
-	ident, ok := sel.X.(*ast.Ident)
+
+	lhs, ok := assign.Lhs[0].(*ast.Ident)
 	if !ok {
 		return
 	}
-	if ident.Name == "http" && sel.Sel.Name == "NewServeMux" {
-		lhs, ok := assign.Lhs[0].(*ast.Ident)
-		if ok {
+
+	// mux := http.NewServeMux()
+	if ident, ok := sel.X.(*ast.Ident); ok {
+		if ident.Name == "http" && sel.Sel.Name == "NewServeMux" {
 			w.muxVars[lhs.Name] = true
+			return
 		}
+	}
+
+	// a := mux.Group("prefix", middleware...)
+	// Accept Group() on any receiver — custom wrappers like httpmux.Mux also have Group().
+	if sel.Sel.Name == "Group" && len(call.Args) >= 1 {
+		recv, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return
+		}
+		_ = recv
+
+		gi := &groupInfo{}
+
+		// First arg is the prefix string.
+		if len(call.Args) >= 1 {
+			gi.prefix = stringLitValue(call.Args[0])
+		}
+
+		// Remaining args are middleware expressions.
+		if len(call.Args) >= 2 {
+			gi.middlewares = append(gi.middlewares, call.Args[1:]...)
+		}
+
+		// Inherit parent group's prefix and middleware.
+		if parent := w.groups[recv.Name]; parent != nil {
+			gi.prefix = parent.prefix + gi.prefix
+			gi.middlewares = append(copyExprs(parent.middlewares), gi.middlewares...)
+		}
+
+		w.groups[lhs.Name] = gi
 	}
 }
 
@@ -152,6 +193,12 @@ func (w *stdlibWalker) processCall(call *ast.CallExpr, scopeMW []ast.Expr) {
 				w.addRoute(call, scopeMW)
 				return
 			}
+			// Check if receiver is a group variable — apply prefix + middleware.
+			if gi := w.groups[ident.Name]; gi != nil {
+				groupMW := concatExprs(scopeMW, gi.middlewares)
+				w.addRouteWithPrefix(call, groupMW, gi.prefix)
+				return
+			}
 		}
 		// Fallback: accept any x.HandleFunc/x.Handle where the first arg
 		// is a string literal that looks like an HTTP route pattern.
@@ -176,6 +223,35 @@ func (w *stdlibWalker) addRoute(call *ast.CallExpr, middlewares []ast.Expr) {
 	handler := call.Args[len(call.Args)-1]
 
 	// Unwrap middleware wrapping: authMiddleware(handler) → collect authMiddleware, use inner handler.
+	handler, wrappedMW := unwrapMiddleware(handler)
+	allMW := concatExprs(middlewares, wrappedMW)
+
+	pos := w.fset.Position(call.Pos())
+	w.routes = append(w.routes, RawRoute{
+		Method:      method,
+		Path:        path,
+		HandlerExpr: handler,
+		Middlewares: copyExprs(allMW),
+		File:        w.file,
+		Line:        pos.Line,
+	})
+}
+
+// addRouteWithPrefix parses the pattern, prepends a group prefix, and records a route.
+func (w *stdlibWalker) addRouteWithPrefix(call *ast.CallExpr, middlewares []ast.Expr, prefix string) {
+	pattern := stringLitValue(call.Args[0])
+	if pattern == "" {
+		return
+	}
+
+	method, path := parseStdlibPattern(pattern)
+
+	// Prepend group prefix to the path.
+	if prefix != "" {
+		path = strings.TrimSuffix(prefix, "/") + path
+	}
+
+	handler := call.Args[len(call.Args)-1]
 	handler, wrappedMW := unwrapMiddleware(handler)
 	allMW := concatExprs(middlewares, wrappedMW)
 

@@ -439,6 +439,15 @@ func TestStdlibExtractor_WrapperMux(t *testing.T) {
 	for key := range expected {
 		t.Errorf("missing route: %s", key)
 	}
+
+	// Verify Group middleware is captured on group routes.
+	for _, r := range routes {
+		if r.Method == "POST" && (r.Path == "/auth.me" || r.Path == "/site.list") {
+			if len(r.Middlewares) == 0 {
+				t.Errorf("route %s %s: expected middleware from Group(), got none", r.Method, r.Path)
+			}
+		}
+	}
 }
 
 // --- Gorilla extractor tests ---
