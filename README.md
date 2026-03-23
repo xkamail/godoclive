@@ -5,12 +5,12 @@
     Point it at your Go code. Get interactive docs. No annotations required.
   </p>
   <p align="center">
-    <a href="https://github.com/syst3mctl/godoclive/actions"><img src="https://img.shields.io/github/actions/workflow/status/syst3mctl/godoclive/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI"></a>
-    <a href="https://goreportcard.com/report/github.com/syst3mctl/godoclive"><img src="https://goreportcard.com/badge/github.com/syst3mctl/godoclive?style=flat-square" alt="Go Report Card"></a>
-    <a href="https://pkg.go.dev/github.com/syst3mctl/godoclive"><img src="https://img.shields.io/badge/go.dev-reference-007d9c?style=flat-square&logo=go&logoColor=white" alt="Go Reference"></a>
-    <a href="https://github.com/syst3mctl/godoclive/releases"><img src="https://img.shields.io/github/v/release/syst3mctl/godoclive?style=flat-square&color=blue" alt="Release"></a>
+    <a href="https://github.com/xkamail/godoclive/actions"><img src="https://img.shields.io/github/actions/workflow/status/xkamail/godoclive/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI"></a>
+    <a href="https://goreportcard.com/report/github.com/xkamail/godoclive"><img src="https://goreportcard.com/badge/github.com/xkamail/godoclive?style=flat-square" alt="Go Report Card"></a>
+    <a href="https://pkg.go.dev/github.com/xkamail/godoclive"><img src="https://img.shields.io/badge/go.dev-reference-007d9c?style=flat-square&logo=go&logoColor=white" alt="Go Reference"></a>
+    <a href="https://github.com/xkamail/godoclive/releases"><img src="https://img.shields.io/github/v/release/xkamail/godoclive?style=flat-square&color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License: MIT"></a>
-    <a href="https://codecov.io/gh/syst3mctl/godoclive/branch/main/graph/badge.svg"><img src="https://codecov.io/gh/syst3mctl/godoclive/branch/main/graph/badge.svg" alt="Codecov"></a>
+    <a href="https://codecov.io/gh/xkamail/godoclive/branch/main/graph/badge.svg"><img src="https://codecov.io/gh/xkamail/godoclive/branch/main/graph/badge.svg" alt="Codecov"></a>
   </p>
 </p>
 
@@ -26,7 +26,7 @@
 ## Quickstart
 
 ```bash
-go install github.com/syst3mctl/godoclive/cmd/godoclive@latest
+go install github.com/xkamail/godoclive/cmd/godoclive@latest
 godoclive generate ./...
 open docs/index.html
 ```
@@ -246,7 +246,7 @@ openapi:
 Use GoDoc Live as a library in your own tools:
 
 ```go
-import "github.com/syst3mctl/godoclive"
+import "github.com/xkamail/godoclive"
 
 // Analyze a project
 endpoints, err := godoclive.Analyze(".", "./...",
@@ -272,6 +272,46 @@ specBytes, err := godoclive.GenerateOpenAPI(endpoints,
     godoclive.WithVersion("v2.1.0"),
 )
 ```
+
+### Embed in your HTTP server
+
+Serve docs directly from your Go application — no external files needed:
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+
+    "github.com/xkamail/godoclive/pkg/godoclive"
+)
+
+func main() {
+    mux := http.NewServeMux()
+
+    // Register your API routes...
+    mux.HandleFunc("GET /health", healthHandler)
+
+    // Analyze this project's source code and serve docs at /docs
+    endpoints, err := godoclive.Analyze(".", "./...",
+        godoclive.WithTitle("My API"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    mux.Handle("GET /docs", godoclive.Handler(endpoints,
+        godoclive.WithTitle("My API"),
+        godoclive.WithVersion("v1.0.0"),
+        godoclive.WithBaseURL("http://localhost:8080"),
+        godoclive.WithTheme("dark"),
+    ))
+
+    log.Fatal(http.ListenAndServe(":8080", mux))
+}
+```
+
+The handler generates a self-contained HTML page once at startup (inline CSS, JS, fonts) and serves it on every request — zero disk I/O at runtime.
 
 ## Accuracy (Phase 1)
 
