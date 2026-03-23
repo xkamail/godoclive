@@ -744,8 +744,8 @@ func TestExtractContract_ArpcHandler(t *testing.T) {
 				t.Errorf("%s: expected at least 2 responses, got %d", key, len(responses))
 			} else {
 				// 200 OK envelope
-				if responses[0].Body == nil || responses[0].Body.Name != "arpc.OKResponse" {
-					t.Errorf("%s: expected envelope 'arpc.OKResponse'", key)
+				if responses[0].Body == nil || responses[0].Body.Name != "ListResultResponse" {
+					t.Errorf("%s: expected envelope 'ListResultResponse'", key)
 				} else {
 					resultField := responses[0].Body.Fields[1]
 					if resultField.Type.Name != "ListResult" {

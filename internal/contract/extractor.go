@@ -177,7 +177,7 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 	// Build arpc envelope response: {"ok": true, "result": <ResultType>}
 	resultRef := typeRefDef(resultType)
 	okResponse := &model.TypeDef{
-		Name: "arpc.OKResponse",
+		Name: resultRef.Name + "Response",
 		Kind: model.KindStruct,
 		Fields: []model.FieldDef{
 			{
@@ -185,6 +185,7 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 				JSONName: "ok",
 				Type:     model.TypeDef{Name: "bool", Kind: model.KindPrimitive},
 				Required: true,
+				Example:  true,
 			},
 			{
 				Name:     "Result",

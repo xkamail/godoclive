@@ -189,12 +189,18 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 
 	// 8. Infer summary and tags.
 	summary := model.InferSummary(handlerName)
-	tags := []string{model.InferTag(handlerName)}
-	if tags[0] == "" {
-		// Fall back to the first meaningful path segment as tag.
-		tags[0] = tagFromPath(route.Path)
+
+	// For arpc-style paths (e.g. /site.list), use the module prefix as tag.
+	var tags []string
+	if tag := tagFromPath(route.Path); tag != "" && strings.Contains(strings.Trim(route.Path, "/"), ".") {
+		tags = []string{tag}
+	} else {
+		tags = []string{model.InferTag(handlerName)}
+		if tags[0] == "" {
+			tags[0] = tagFromPath(route.Path)
+		}
 	}
-	if tags[0] == "" {
+	if len(tags) > 0 && tags[0] == "" {
 		tags = nil
 	}
 
@@ -349,6 +355,7 @@ func lookupType(name, pkgPath string, idx map[string]map[string]types.Type) type
 
 // tagFromPath extracts the first meaningful path segment as a fallback tag.
 // e.g. "/api/users/{id}" → "users", "/health" → "health".
+// For arpc-style paths like "/site.list", splits on "." → "site".
 func tagFromPath(path string) string {
 	segments := strings.Split(strings.Trim(path, "/"), "/")
 	for _, seg := range segments {
@@ -357,6 +364,10 @@ func tagFromPath(path string) string {
 		}
 		if strings.HasPrefix(seg, "{") {
 			continue
+		}
+		// arpc-style: "site.list" → "site"
+		if dotIdx := strings.Index(seg, "."); dotIdx > 0 {
+			return seg[:dotIdx]
 		}
 		return seg
 	}
