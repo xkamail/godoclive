@@ -36,6 +36,7 @@ func (e *StdlibExtractor) Extract(pkgs []*packages.Package) ([]RawRoute, error) 
 				if strings.HasPrefix(fn.Name.Name, "Test") || strings.HasPrefix(fn.Name.Name, "Example") {
 					continue
 				}
+				w.collectMuxParams(fn)
 				w.walkBlock(fn.Body.List, nil)
 			}
 			routes = append(routes, w.routes...)
@@ -106,6 +107,34 @@ func (w *stdlibWalker) handleAssign(assign *ast.AssignStmt) {
 	}
 }
 
+// collectMuxParams scans function parameters for *http.ServeMux and adds
+// their names to muxVars so that mux.HandleFunc/mux.Handle calls are recognized
+// when the ServeMux is passed as a parameter (e.g. func Mount(mux *http.ServeMux, ...)).
+func (w *stdlibWalker) collectMuxParams(fn *ast.FuncDecl) {
+	if fn.Type.Params == nil {
+		return
+	}
+	for _, field := range fn.Type.Params.List {
+		star, ok := field.Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		sel, ok := star.X.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		if ident.Name == "http" && sel.Sel.Name == "ServeMux" {
+			for _, name := range field.Names {
+				w.muxVars[name.Name] = true
+			}
+		}
+	}
+}
+
 // processCall dispatches a call expression based on the method name.
 func (w *stdlibWalker) processCall(call *ast.CallExpr, scopeMW []ast.Expr) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
@@ -116,16 +145,18 @@ func (w *stdlibWalker) processCall(call *ast.CallExpr, scopeMW []ast.Expr) {
 
 	switch {
 	case (name == "HandleFunc" || name == "Handle") && len(call.Args) >= 2:
-		// Could be http.HandleFunc or mux.HandleFunc
-		isHTTPPkg := false
+		// Match http.HandleFunc, mux.HandleFunc, or any wrapper (e.g. httpmux.Mux)
+		// that calls HandleFunc/Handle with an HTTP pattern string.
 		if ident, ok := sel.X.(*ast.Ident); ok {
-			if ident.Name == "http" {
-				isHTTPPkg = true
-			} else if w.muxVars[ident.Name] {
-				isHTTPPkg = true // mux variable
+			if ident.Name == "http" || w.muxVars[ident.Name] {
+				w.addRoute(call, scopeMW)
+				return
 			}
 		}
-		if isHTTPPkg {
+		// Fallback: accept any x.HandleFunc/x.Handle where the first arg
+		// is a string literal that looks like an HTTP route pattern.
+		// This supports custom ServeMux wrappers (e.g. httpmux.Mux).
+		if pattern := stringLitValue(call.Args[0]); pattern != "" && looksLikeHTTPPattern(pattern) {
 			w.addRoute(call, scopeMW)
 		}
 	}
@@ -205,6 +236,17 @@ func isHTTPMethod(s string) bool {
 		return true
 	}
 	return false
+}
+
+// looksLikeHTTPPattern returns true if s looks like an HTTP route pattern.
+// Matches "METHOD /path" (e.g. "GET /users") or a bare path starting with "/".
+func looksLikeHTTPPattern(s string) bool {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "/") {
+		return true
+	}
+	parts := strings.SplitN(s, " ", 2)
+	return len(parts) == 2 && isHTTPMethod(parts[0]) && strings.HasPrefix(strings.TrimSpace(parts[1]), "/")
 }
 
 // unwrapMiddleware unwraps function call wrapping like authMiddleware(handler),

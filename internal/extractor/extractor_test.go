@@ -347,6 +347,100 @@ func TestStdlibExtractor_Basic(t *testing.T) {
 	}
 }
 
+func TestStdlibExtractor_MountParam(t *testing.T) {
+	dir := testdataDir("stdlib-mount")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// stdlib-mount has routes registered via Mount(mux *http.ServeMux):
+	// GET /auth/{provider}, GET /auth/{provider}/callback,
+	// POST /site.list (with protect middleware), POST /site.create (with protect middleware)
+	expected := map[string]bool{
+		"GET /auth/{provider}":          true,
+		"GET /auth/{provider}/callback": true,
+		"POST /site.list":               true,
+		"POST /site.create":             true,
+	}
+
+	if len(routes) != len(expected) {
+		t.Errorf("expected %d routes, got %d", len(expected), len(routes))
+		for _, r := range routes {
+			t.Logf("  found: %s %s (line %d)", r.Method, r.Path, r.Line)
+		}
+	}
+
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if !expected[key] {
+			t.Errorf("unexpected route: %s", key)
+		}
+		delete(expected, key)
+	}
+
+	for key := range expected {
+		t.Errorf("missing route: %s", key)
+	}
+
+	// Verify middleware is detected on protected routes.
+	for _, r := range routes {
+		if r.Method == "POST" && len(r.Middlewares) == 0 {
+			t.Errorf("route %s %s should have protect middleware", r.Method, r.Path)
+		}
+	}
+}
+
+func TestStdlibExtractor_WrapperMux(t *testing.T) {
+	dir := testdataDir("stdlib-wrapper")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// stdlib-wrapper has routes via httpmux.Mux (custom wrapper):
+	// GET /auth/{provider}, GET /auth/callback, POST /ingest/{serial_number}
+	// POST /auth.me (via Group), POST /site.list (via Group)
+	expected := map[string]bool{
+		"GET /auth/{provider}":          true,
+		"GET /auth/callback":            true,
+		"POST /ingest/{serial_number}":  true,
+		"POST /auth.me":                 true,
+		"POST /site.list":               true,
+	}
+
+	if len(routes) != len(expected) {
+		t.Errorf("expected %d routes, got %d", len(expected), len(routes))
+		for _, r := range routes {
+			t.Logf("  found: %s %s (line %d)", r.Method, r.Path, r.Line)
+		}
+	}
+
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if !expected[key] {
+			t.Errorf("unexpected route: %s", key)
+		}
+		delete(expected, key)
+	}
+
+	for key := range expected {
+		t.Errorf("missing route: %s", key)
+	}
+}
+
 // --- Gorilla extractor tests ---
 
 func TestGorillaExtractor_Basic(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"github.com/syst3mctl/godoclive/internal/extractor"
 	"github.com/syst3mctl/godoclive/internal/loader"
 	"github.com/syst3mctl/godoclive/internal/resolver"
+	"golang.org/x/tools/go/packages"
 )
 
 func testdataDir(name string) string {
@@ -669,4 +670,182 @@ func TestExtractQueryParams_FormValue(t *testing.T) {
 			t.Errorf("expected param name 'title', got %q", params[0].Name)
 		}
 	}
+}
+
+// --- arpc Contract Tests ---
+
+func TestExtractContract_ArpcHandler(t *testing.T) {
+	dir := testdataDir("stdlib-arpc")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	tested := make(map[string]bool)
+
+	for _, route := range routes {
+		key := route.Method + " " + route.Path
+
+		// Find TypesInfo for the package containing this route's file.
+		info := findInfoForRoute(route, pkgs)
+		if info == nil {
+			t.Logf("%s: no TypesInfo found", key)
+			continue
+		}
+
+		fd, fl, err := resolver.ResolveHandler(route.HandlerExpr, info, pkgs)
+		if err != nil {
+			t.Errorf("ResolveHandler(%s) failed: %v", key, err)
+			continue
+		}
+
+		var fn ast.Node
+		var handlerInfo *types.Info
+		if fd != nil {
+			fn = fd
+			handlerInfo = findHandlerInfo(fd, pkgs)
+			if handlerInfo == nil {
+				handlerInfo = info
+			}
+		} else if fl != nil {
+			fn = fl
+			handlerInfo = info
+		}
+
+		pn := resolver.HandlerParamNames{}
+		if fd != nil {
+			pn = resolver.ResolveHandlerParams(fd.Type, handlerInfo)
+		} else if fl != nil {
+			pn = resolver.ResolveHandlerParams(fl.Type, handlerInfo)
+		}
+
+		req, responses, _ := contract.ExtractContract(route, fn, handlerInfo, pn, pkgs)
+
+		tested[key] = true
+
+		switch key {
+		case "POST /site.list":
+			if req.Body == nil {
+				t.Errorf("%s: expected request body (ListParams), got nil", key)
+			} else if req.Body.Name != "ListParams" {
+				t.Errorf("%s: expected body type 'ListParams', got %q", key, req.Body.Name)
+			}
+			if req.ContentType != "application/json" {
+				t.Errorf("%s: expected content-type 'application/json', got %q", key, req.ContentType)
+			}
+			// arpc response: 200 OK + 200 error (site/invalid-page)
+			if len(responses) < 2 {
+				t.Errorf("%s: expected at least 2 responses, got %d", key, len(responses))
+			} else {
+				// 200 OK envelope
+				if responses[0].Body == nil || responses[0].Body.Name != "arpc.OKResponse" {
+					t.Errorf("%s: expected envelope 'arpc.OKResponse'", key)
+				} else {
+					resultField := responses[0].Body.Fields[1]
+					if resultField.Type.Name != "ListResult" {
+						t.Errorf("%s: expected result type 'ListResult', got %q", key, resultField.Type.Name)
+					}
+				}
+				// Error response from arpc.NewErrorCode("site/invalid-page", ...)
+				if responses[1].Description != "site/invalid-page: page must be >= 1" {
+					t.Errorf("%s: expected error 'site/invalid-page: page must be >= 1', got %q", key, responses[1].Description)
+				}
+			}
+
+		case "POST /site.create":
+			if req.Body == nil {
+				t.Errorf("%s: expected request body (CreateParams), got nil", key)
+			} else if req.Body.Name != "CreateParams" {
+				t.Errorf("%s: expected body type 'CreateParams', got %q", key, req.Body.Name)
+			}
+			// Should have: 200 OK + NewError("name is required") + NewErrorCode("site/invalid-domain", ...)
+			if len(responses) < 3 {
+				t.Errorf("%s: expected at least 3 responses, got %d", key, len(responses))
+			} else {
+				if responses[0].Body != nil {
+					resultField := responses[0].Body.Fields[1]
+					if resultField.Type.Name != "CreateResult" {
+						t.Errorf("%s: expected result type 'CreateResult', got %q", key, resultField.Type.Name)
+					}
+				}
+				// NewError("name is required")
+				if responses[1].Description != "name is required" {
+					t.Errorf("%s: expected error 'name is required', got %q", key, responses[1].Description)
+				}
+				// NewErrorCode("site/invalid-domain", "domain is required")
+				if responses[2].Description != "site/invalid-domain: domain is required" {
+					t.Errorf("%s: expected error 'site/invalid-domain: domain is required', got %q", key, responses[2].Description)
+				}
+			}
+
+		case "POST /auth.me":
+			if req.Body == nil {
+				t.Errorf("%s: expected request body (MeParams), got nil", key)
+			} else if req.Body.Name != "MeParams" {
+				t.Errorf("%s: expected body type 'MeParams', got %q", key, req.Body.Name)
+			}
+			if len(responses) > 0 && responses[0].Body != nil {
+				resultField := responses[0].Body.Fields[1]
+				if resultField.Type.Name != "MeResult" {
+					t.Errorf("%s: expected result type 'MeResult', got %q", key, resultField.Type.Name)
+				}
+			}
+
+		case "GET /auth/{provider}":
+			// Standard HTTP handler — should NOT have arpc body extraction.
+			if len(req.PathParams) == 0 {
+				t.Errorf("%s: expected path param 'provider'", key)
+			}
+		}
+	}
+
+	// Ensure all expected arpc routes were resolved and tested.
+	for _, expected := range []string{"POST /site.list", "POST /site.create", "POST /auth.me"} {
+		if !tested[expected] {
+			t.Errorf("route %s was not resolved or tested", expected)
+		}
+	}
+}
+
+// findInfoForRoute returns the types.Info for the package containing the route.
+func findInfoForRoute(route extractor.RawRoute, pkgs []*packages.Package) *types.Info {
+	for _, pkg := range pkgs {
+		if pkg.TypesInfo == nil {
+			continue
+		}
+		for _, f := range pkg.GoFiles {
+			if f == route.File {
+				return pkg.TypesInfo
+			}
+		}
+	}
+	for _, pkg := range pkgs {
+		if pkg.TypesInfo != nil {
+			return pkg.TypesInfo
+		}
+	}
+	return nil
+}
+
+// findHandlerInfo finds TypesInfo for the package containing fd.
+func findHandlerInfo(fd *ast.FuncDecl, pkgs []*packages.Package) *types.Info {
+	for _, pkg := range pkgs {
+		if pkg.TypesInfo == nil {
+			continue
+		}
+		for _, file := range pkg.Syntax {
+			for _, decl := range file.Decls {
+				if decl == fd {
+					return pkg.TypesInfo
+				}
+			}
+		}
+	}
+	return nil
 }
