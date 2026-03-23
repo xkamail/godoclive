@@ -403,12 +403,12 @@ func generateSingle(outputDir string, apiJSON []byte, theme string) error {
 	html = strings.Replace(html, `<link rel="stylesheet" href="style.css">`,
 		"<style>\n"+css+"\n</style>", 1)
 
+	// Inject API data before inlining JS so the <script src="app.js"> anchor exists.
+	html = injectAPIData(html, apiJSON)
+
 	// Inline JS.
 	html = strings.Replace(html, `<script src="app.js"></script>`,
 		"<script>\n"+string(GetJS())+"\n</script>", 1)
-
-	// Inject API data and theme.
-	html = injectAPIData(html, apiJSON)
 	html = injectTheme(html, theme)
 
 	if err := os.WriteFile(filepath.Join(outputDir, "index.html"), []byte(html), 0o644); err != nil {
