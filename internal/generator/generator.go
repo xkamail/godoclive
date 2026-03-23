@@ -476,6 +476,31 @@ func fontFaceDecls(inline bool) string {
 	return sb.String()
 }
 
+// RenderSingleHTML returns a self-contained HTML page as bytes, suitable for
+// serving via an http.Handler without writing to disk.
+func RenderSingleHTML(endpoints []model.EndpointDef, cfg GeneratorConfig) ([]byte, error) {
+	ad := buildAPIData(endpoints, cfg)
+	jsonBytes, err := json.Marshal(ad)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling API data: %w", err)
+	}
+
+	html := string(GetHTML())
+	css := fontFaceDecls(true) + "\n" + string(GetCSS())
+	html = strings.Replace(html, `<link rel="stylesheet" href="style.css">`,
+		"<style>\n"+css+"\n</style>", 1)
+	html = strings.Replace(html, `<script src="app.js"></script>`,
+		"<script>\n"+string(GetJS())+"\n</script>", 1)
+	html = injectAPIData(html, jsonBytes)
+	theme := cfg.Theme
+	if theme == "" {
+		theme = "dark"
+	}
+	html = injectTheme(html, theme)
+
+	return []byte(html), nil
+}
+
 // Serve starts an HTTP server serving the generated docs at the given address.
 func Serve(dir, addr string) error {
 	mux := http.NewServeMux()

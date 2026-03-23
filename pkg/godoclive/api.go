@@ -3,6 +3,8 @@
 package godoclive
 
 import (
+	"net/http"
+
 	"github.com/xkamail/godoclive/internal/config"
 	"github.com/xkamail/godoclive/internal/generator"
 	"github.com/xkamail/godoclive/internal/model"
@@ -126,6 +128,37 @@ func Generate(endpoints []EndpointDef, opts ...Option) error {
 	}
 
 	return nil
+}
+
+// Handler returns an http.Handler that serves the API documentation as a
+// self-contained HTML page. The HTML is generated once from the provided
+// endpoints and served on every request.
+//
+// Usage:
+//
+//	mux.Handle("/docs", godoclive.Handler(endpoints, godoclive.WithTitle("My API")))
+func Handler(endpoints []EndpointDef, opts ...Option) http.Handler {
+	o := &Options{Theme: "dark"}
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	html, err := generator.RenderSingleHTML(endpoints, generator.GeneratorConfig{
+		Title:   o.Title,
+		Version: o.Version,
+		BaseURL: o.BaseURL,
+		Theme:   o.Theme,
+	})
+	if err != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "failed to render docs: "+err.Error(), http.StatusInternalServerError)
+		})
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(html)
+	})
 }
 
 // GenerateOpenAPI generates an OpenAPI 3.1.0 spec from analyzed endpoints and
