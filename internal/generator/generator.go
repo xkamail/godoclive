@@ -101,11 +101,13 @@ type apiBody struct {
 }
 
 type apiField struct {
-	Name     string `json:"name"`
-	JSONName string `json:"jsonName"`
-	Type     string `json:"type"`
-	Required bool   `json:"required"`
-	Example  string `json:"example,omitempty"`
+	Name     string     `json:"name"`
+	JSONName string     `json:"jsonName"`
+	Type     string     `json:"type"`
+	Required bool       `json:"required"`
+	Example  string     `json:"example,omitempty"`
+	Doc      string     `json:"doc,omitempty"`
+	Fields   []apiField `json:"fields,omitempty"`
 }
 
 type apiResponse struct {
@@ -268,12 +270,21 @@ func convertTypeDefFields(td *model.TypeDef) []apiField {
 			JSONName: f.JSONName,
 			Type:     typeDefToString(&f.Type),
 			Required: f.Required,
+			Doc:      f.Doc,
 		}
 		if f.Example != nil {
 			exBytes, err := json.Marshal(f.Example)
 			if err == nil {
 				af.Example = string(exBytes)
 			}
+		}
+		// Recurse into nested struct fields.
+		if f.Type.Kind == model.KindStruct && len(f.Type.Fields) > 0 {
+			af.Fields = convertTypeDefFields(&f.Type)
+		}
+		// Recurse into slice of struct.
+		if f.Type.Kind == model.KindSlice && f.Type.Elem != nil && f.Type.Elem.Kind == model.KindStruct && len(f.Type.Elem.Fields) > 0 {
+			af.Fields = convertTypeDefFields(f.Type.Elem)
 		}
 		fields = append(fields, af)
 	}

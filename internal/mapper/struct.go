@@ -62,6 +62,56 @@ func mapStruct(named *types.Named, st *types.Struct, pkg *packages.Package, visi
 	return def
 }
 
+// mapStructWithPkgs is like mapStruct but resolves the correct package for each
+// field type so doc comments work across package boundaries.
+func mapStructWithPkgs(named *types.Named, st *types.Struct, pkg *packages.Package, pkgs []*packages.Package, visited map[*types.Named]bool) model.TypeDef {
+	def := model.TypeDef{
+		Kind: model.KindStruct,
+	}
+	if named != nil {
+		def.Name = named.Obj().Name()
+		if named.Obj().Pkg() != nil {
+			def.Package = named.Obj().Pkg().Path()
+		}
+	}
+
+	for i := 0; i < st.NumFields(); i++ {
+		field := st.Field(i)
+		tagStr := st.Tag(i)
+		tag := reflect.StructTag(tagStr)
+
+		jsonTag := tag.Get("json")
+		jsonName, opts := parseJSONTag(jsonTag)
+
+		if jsonName == "-" {
+			continue
+		}
+		if jsonName == "" {
+			jsonName = field.Name()
+		}
+
+		fd := model.FieldDef{
+			Name:       field.Name(),
+			JSONName:   jsonName,
+			OmitEmpty:  strings.Contains(opts, "omitempty"),
+			Nullable:   isPointer(field.Type()),
+			Required:   isRequired(tag),
+			Doc:        fieldDocComment(named, field, pkg),
+			Deprecated: fieldIsDeprecated(named, field, pkg),
+		}
+		fd.Type = mapTypeWithPkgs(field.Type(), pkg, pkgs, visited)
+		fd.Example = generateExample(field.Type(), jsonName)
+
+		if field.Embedded() && fd.Type.Kind == model.KindStruct {
+			def.Fields = append(def.Fields, fd.Type.Fields...)
+			continue
+		}
+
+		def.Fields = append(def.Fields, fd)
+	}
+	return def
+}
+
 // parseJSONTag splits a json tag value into the name and remaining options.
 // e.g. "email,omitempty" → ("email", "omitempty")
 func parseJSONTag(tag string) (string, string) {
@@ -159,8 +209,13 @@ func fieldDocComment(named *types.Named, field *types.Var, pkg *packages.Package
 				}
 				for _, f := range st.Fields.List {
 					for _, name := range f.Names {
-						if name.Pos() == fieldPos && f.Doc != nil {
-							return strings.TrimSpace(f.Doc.Text())
+						if name.Pos() == fieldPos {
+							if f.Doc != nil {
+								return strings.TrimSpace(f.Doc.Text())
+							}
+							if f.Comment != nil {
+								return strings.TrimSpace(f.Comment.Text())
+							}
 						}
 					}
 				}

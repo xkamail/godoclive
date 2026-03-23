@@ -49,3 +49,6 @@ technical_spec.md
 
 # for agent
 /pr-description
+
+# Dev tools
+.goreload

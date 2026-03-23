@@ -687,6 +687,11 @@
           html += '<div class="card-summary">' + esc(ep.summary) + '</div>';
         }
 
+        // Description (from handler doc comment)
+        if (ep.description) {
+          html += '<div class="card-description">' + esc(ep.description) + '</div>';
+        }
+
         // Unresolved callout (hidden by default)
         if (ep.unresolved && ep.unresolved.length > 0) {
           html += '<div class="unresolved-callout hidden" id="unresolved-' + epId + '">';
@@ -853,23 +858,42 @@
   // Field table (schema)
   // ============================================================
   function buildFieldTable(fields) {
+    var hasDoc = hasDocDeep(fields);
     var h = '<table class="param-table"><thead><tr>';
     h += '<th>Field</th><th>Type</th><th>Required</th>';
+    if (hasDoc) h += '<th>Description</th>';
     h += '</tr></thead><tbody>';
-    fields.forEach(function (f) {
-      h += '<tr>';
-      h += '<td><span class="param-name">' + esc(f.jsonName || f.name) + '</span></td>';
-      h += '<td><span class="param-type">' + esc(f.type) + '</span></td>';
-      h += '<td>';
-      if (f.required) {
-        h += '<span class="required-dot" aria-hidden="true"></span>';
-        h += '<span class="field-required-text"> required</span>';
-      }
-      h += '</td>';
-      h += '</tr>';
-    });
-    h += '</tbody></table>';
+    var rows = '';
+    function addRows(fs, depth) {
+      fs.forEach(function (f) {
+        var indent = depth > 0 ? '<span class="field-indent" style="padding-left:' + (depth * 16) + 'px">' + esc(f.jsonName || f.name) + '</span>' : '<span class="param-name">' + esc(f.jsonName || f.name) + '</span>';
+        rows += '<tr' + (depth > 0 ? ' class="nested-field"' : '') + '>';
+        rows += '<td>' + indent + '</td>';
+        rows += '<td><span class="param-type">' + esc(f.type) + '</span></td>';
+        rows += '<td>';
+        if (f.required) {
+          rows += '<span class="required-dot" aria-hidden="true"></span>';
+          rows += '<span class="field-required-text"> required</span>';
+        }
+        rows += '</td>';
+        if (hasDoc) rows += '<td>' + (f.doc ? esc(f.doc) : '') + '</td>';
+        rows += '</tr>';
+        if (f.fields && f.fields.length > 0) {
+          addRows(f.fields, depth + 1);
+        }
+      });
+    }
+    addRows(fields, 0);
+    h += rows + '</tbody></table>';
     return h;
+  }
+
+  function hasDocDeep(fields) {
+    for (var i = 0; i < fields.length; i++) {
+      if (fields[i].doc) return true;
+      if (fields[i].fields && hasDocDeep(fields[i].fields)) return true;
+    }
+    return false;
   }
 
   // ============================================================
