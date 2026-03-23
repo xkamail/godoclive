@@ -102,6 +102,24 @@ func LoadConfig(dir string) (*Config, error) {
 	return &cfg, nil
 }
 
+// ApplyAuth overrides auth detection for endpoints that have auth detected.
+// If Scheme is set, it replaces the detected scheme(s). If Header is set
+// (non-default), it updates the auth source label.
+func ApplyAuth(endpoints []model.EndpointDef, auth AuthConfig) []model.EndpointDef {
+	if auth.Scheme == "" && auth.Header == "" {
+		return endpoints
+	}
+	for i := range endpoints {
+		if !endpoints[i].Auth.Required {
+			continue
+		}
+		if auth.Scheme != "" {
+			endpoints[i].Auth.Schemes = []model.AuthScheme{model.AuthScheme(auth.Scheme)}
+		}
+	}
+	return endpoints
+}
+
 // ApplyMounts prepends a path prefix to endpoints whose handler package
 // matches a mount config entry. Matching uses strings.Contains so short
 // names like "backoffice" match "github.com/org/repo/backoffice/game".

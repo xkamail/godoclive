@@ -18,6 +18,9 @@ type EndpointDef = model.EndpointDef
 // MountConfig maps a package to a path prefix for endpoint path rewriting.
 type MountConfig = config.MountConfig
 
+// AuthConfig overrides auth detection settings.
+type AuthConfig = config.AuthConfig
+
 // Options configures the behavior of Analyze and Generate.
 type Options struct {
 	Config        *config.Config
@@ -29,6 +32,7 @@ type Options struct {
 	Theme         string // "light" or "dark"
 	OpenAPIOutput string // path for OpenAPI spec output
 	Mounts        []MountConfig
+	Auth          *AuthConfig
 }
 
 // Option is a functional option for configuring Analyze and Generate.
@@ -86,6 +90,15 @@ func WithMounts(mounts ...MountConfig) Option {
 	return func(o *Options) { o.Mounts = append(o.Mounts, mounts...) }
 }
 
+// WithAuth overrides the auth scheme for endpoints where auth is detected.
+//
+// Usage:
+//
+//	godoclive.WithAuth(godoclive.AuthConfig{Header: "Authorization", Scheme: "bearer"})
+func WithAuth(auth AuthConfig) Option {
+	return func(o *Options) { o.Auth = &auth }
+}
+
 // Analyze runs the analysis pipeline on the given Go packages and returns
 // the extracted endpoint contracts. The pattern should be a directory path
 // with an optional package pattern suffix (e.g. "./..." or "./cmd/...").
@@ -105,12 +118,15 @@ func Analyze(dir, pattern string, opts ...Option) ([]EndpointDef, error) {
 		cfg = loaded
 	}
 
-	// Merge programmatic mounts into config.
-	if len(o.Mounts) > 0 {
+	// Merge programmatic options into config.
+	if len(o.Mounts) > 0 || o.Auth != nil {
 		if cfg == nil {
 			cfg = &config.Config{}
 		}
 		cfg.Mounts = append(cfg.Mounts, o.Mounts...)
+		if o.Auth != nil {
+			cfg.Auth = *o.Auth
+		}
 	}
 
 	return pipeline.RunPipeline(dir, pattern, cfg)

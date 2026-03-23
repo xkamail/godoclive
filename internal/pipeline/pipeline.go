@@ -78,11 +78,12 @@ func RunPipeline(dir, pattern string, cfg *config.Config) ([]model.EndpointDef, 
 		endpoints = append(endpoints, ep)
 	}
 
-	// 9. Apply config mounts, exclusions, and overrides.
+	// 9. Apply config mounts, exclusions, overrides, and auth.
 	if cfg != nil {
 		endpoints = config.ApplyMounts(endpoints, cfg.Mounts)
 		endpoints = config.ApplyExclusions(endpoints, cfg.Exclude)
 		endpoints = config.ApplyOverrides(endpoints, cfg.Overrides)
+		endpoints = config.ApplyAuth(endpoints, cfg.Auth)
 	}
 
 	return endpoints, nil
