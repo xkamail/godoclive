@@ -15,6 +15,9 @@ import (
 // EndpointDef is the public type alias for the analyzed endpoint contract.
 type EndpointDef = model.EndpointDef
 
+// MountConfig maps a package to a path prefix for endpoint path rewriting.
+type MountConfig = config.MountConfig
+
 // Options configures the behavior of Analyze and Generate.
 type Options struct {
 	Config        *config.Config
@@ -25,6 +28,7 @@ type Options struct {
 	BaseURL       string
 	Theme         string // "light" or "dark"
 	OpenAPIOutput string // path for OpenAPI spec output
+	Mounts        []MountConfig
 }
 
 // Option is a functional option for configuring Analyze and Generate.
@@ -70,6 +74,18 @@ func WithOpenAPIOutput(path string) Option {
 	return func(o *Options) { o.OpenAPIOutput = path }
 }
 
+// WithMounts sets mount prefix mappings for packages. Endpoints whose handler
+// package contains the given string get the prefix prepended to their path.
+//
+// Usage:
+//
+//	godoclive.WithMounts(
+//	    godoclive.MountConfig{Package: "backoffice", Prefix: "/backoffice"},
+//	)
+func WithMounts(mounts ...MountConfig) Option {
+	return func(o *Options) { o.Mounts = append(o.Mounts, mounts...) }
+}
+
 // Analyze runs the analysis pipeline on the given Go packages and returns
 // the extracted endpoint contracts. The pattern should be a directory path
 // with an optional package pattern suffix (e.g. "./..." or "./cmd/...").
@@ -86,6 +102,14 @@ func Analyze(dir, pattern string, opts ...Option) ([]EndpointDef, error) {
 			return nil, err
 		}
 		cfg = loaded
+	}
+
+	// Merge programmatic mounts into config.
+	if len(o.Mounts) > 0 {
+		if cfg == nil {
+			cfg = &config.Config{}
+		}
+		cfg.Mounts = append(cfg.Mounts, o.Mounts...)
 	}
 
 	return pipeline.RunPipeline(dir, pattern, cfg)
