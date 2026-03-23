@@ -47,14 +47,28 @@ func (e *StdlibExtractor) Extract(pkgs []*packages.Package) ([]RawRoute, error) 
 	return routes, nil
 }
 
-// isStdlibHTTPPackage returns true if the package imports net/http.
+// isStdlibHTTPPackage returns true if the package imports net/http or a
+// known ServeMux wrapper package (e.g. httpmux).
 func isStdlibHTTPPackage(pkg *packages.Package) bool {
 	for imp := range pkg.Imports {
 		if imp == "net/http" {
 			return true
 		}
+		// Accept packages that wrap http.ServeMux (e.g. github.com/moonrhythm/httpmux).
+		if isHTTPMuxPackage(imp) {
+			return true
+		}
 	}
 	return false
+}
+
+// isHTTPMuxPackage returns true if the import path is a known ServeMux wrapper.
+func isHTTPMuxPackage(path string) bool {
+	// Match any package whose last segment is "httpmux".
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:] == "httpmux"
+	}
+	return path == "httpmux"
 }
 
 // groupInfo tracks prefix and middleware for a mux group variable.
