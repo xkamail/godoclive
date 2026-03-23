@@ -7,10 +7,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/syst3mctl/godoclive/internal/contract"
-	"github.com/syst3mctl/godoclive/internal/extractor"
-	"github.com/syst3mctl/godoclive/internal/loader"
-	"github.com/syst3mctl/godoclive/internal/resolver"
+	"github.com/xkamail/godoclive/internal/contract"
+	"github.com/xkamail/godoclive/internal/extractor"
+	"github.com/xkamail/godoclive/internal/loader"
+	"github.com/xkamail/godoclive/internal/resolver"
 	"golang.org/x/tools/go/packages"
 )
 

@@ -15,11 +15,11 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
-	"github.com/syst3mctl/godoclive/internal/config"
-	"github.com/syst3mctl/godoclive/internal/generator"
-	"github.com/syst3mctl/godoclive/internal/model"
-	"github.com/syst3mctl/godoclive/internal/openapi"
-	"github.com/syst3mctl/godoclive/internal/pipeline"
+	"github.com/xkamail/godoclive/internal/config"
+	"github.com/xkamail/godoclive/internal/generator"
+	"github.com/xkamail/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/openapi"
+	"github.com/xkamail/godoclive/internal/pipeline"
 )
 
 var version = "dev"

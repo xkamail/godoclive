@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syst3mctl/godoclive/internal/openapi"
-	"github.com/syst3mctl/godoclive/internal/pipeline"
+	"github.com/xkamail/godoclive/internal/openapi"
+	"github.com/xkamail/godoclive/internal/pipeline"
 )
 
 func testdataDir(name string) string {

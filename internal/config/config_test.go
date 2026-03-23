@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/syst3mctl/godoclive/internal/config"
-	"github.com/syst3mctl/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/config"
+	"github.com/xkamail/godoclive/internal/model"
 )
 
 const sampleYAML = `title: "My API"

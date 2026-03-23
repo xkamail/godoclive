@@ -1,4 +1,4 @@
-module github.com/syst3mctl/godoclive/testdata/chi-nested
+module github.com/xkamail/godoclive/testdata/chi-nested
 
 go 1.23
 

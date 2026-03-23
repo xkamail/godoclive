@@ -1,3 +1,3 @@
-module github.com/syst3mctl/godoclive/testdata/stdlib-mount
+module github.com/xkamail/godoclive/testdata/stdlib-mount
 
 go 1.23

@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/syst3mctl/godoclive/internal/generator"
-	"github.com/syst3mctl/godoclive/internal/model"
-	"github.com/syst3mctl/godoclive/internal/pipeline"
+	"github.com/xkamail/godoclive/internal/generator"
+	"github.com/xkamail/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/pipeline"
 )
 
 func testdataDir(name string) string {

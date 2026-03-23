@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	"go/types"
 
-	"github.com/syst3mctl/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/model"
 	"golang.org/x/tools/go/packages"
 )
 

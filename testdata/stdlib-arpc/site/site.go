@@ -3,7 +3,7 @@ package site
 import (
 	"context"
 
-	"github.com/syst3mctl/godoclive/testdata/stdlib-arpc/arpc"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/arpc"
 )
 
 // ListParams is the request for listing sites.

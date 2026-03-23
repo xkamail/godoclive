@@ -1,4 +1,4 @@
-module github.com/syst3mctl/godoclive/testdata/echo-basic
+module github.com/xkamail/godoclive/testdata/echo-basic
 
 go 1.21
 

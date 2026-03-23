@@ -1,4 +1,4 @@
-module github.com/syst3mctl/godoclive/testdata/gin-basic
+module github.com/xkamail/godoclive/testdata/gin-basic
 
 go 1.23
 

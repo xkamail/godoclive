@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/syst3mctl/godoclive/internal/loader"
-	"github.com/syst3mctl/godoclive/internal/pipeline"
+	"github.com/xkamail/godoclive/internal/loader"
+	"github.com/xkamail/godoclive/internal/pipeline"
 )
 
 func BenchmarkLoadPackages_ChiBasic(b *testing.B) {

@@ -5,9 +5,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/syst3mctl/godoclive/internal/loader"
-	"github.com/syst3mctl/godoclive/internal/mapper"
-	"github.com/syst3mctl/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/loader"
+	"github.com/xkamail/godoclive/internal/mapper"
+	"github.com/xkamail/godoclive/internal/model"
 	"golang.org/x/tools/go/packages"
 )
 

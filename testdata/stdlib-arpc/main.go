@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/syst3mctl/godoclive/testdata/stdlib-arpc/arpc"
-	"github.com/syst3mctl/godoclive/testdata/stdlib-arpc/auth"
-	"github.com/syst3mctl/godoclive/testdata/stdlib-arpc/site"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/arpc"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/auth"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/site"
 )
 
 func main() {

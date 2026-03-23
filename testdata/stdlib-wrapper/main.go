@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/syst3mctl/godoclive/testdata/stdlib-wrapper/httpmux"
+	"github.com/xkamail/godoclive/testdata/stdlib-wrapper/httpmux"
 )
 
 func main() {

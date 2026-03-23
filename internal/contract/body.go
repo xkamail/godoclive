@@ -4,8 +4,8 @@ import (
 	"go/ast"
 	"go/types"
 
-	"github.com/syst3mctl/godoclive/internal/model"
-	"github.com/syst3mctl/godoclive/internal/resolver"
+	"github.com/xkamail/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/resolver"
 )
 
 // BodyResult holds the outcome of request body extraction.

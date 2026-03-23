@@ -1,4 +1,4 @@
-module github.com/syst3mctl/godoclive/testdata/chi-helpers
+module github.com/xkamail/godoclive/testdata/chi-helpers
 
 go 1.23
 

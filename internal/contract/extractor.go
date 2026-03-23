@@ -4,9 +4,9 @@ import (
 	"go/ast"
 	"go/types"
 
-	"github.com/syst3mctl/godoclive/internal/extractor"
-	"github.com/syst3mctl/godoclive/internal/model"
-	"github.com/syst3mctl/godoclive/internal/resolver"
+	"github.com/xkamail/godoclive/internal/extractor"
+	"github.com/xkamail/godoclive/internal/model"
+	"github.com/xkamail/godoclive/internal/resolver"
 	"golang.org/x/tools/go/packages"
 )
 

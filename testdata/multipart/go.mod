@@ -1,4 +1,4 @@
-module github.com/syst3mctl/godoclive/testdata/multipart
+module github.com/xkamail/godoclive/testdata/multipart
 
 go 1.23
 
