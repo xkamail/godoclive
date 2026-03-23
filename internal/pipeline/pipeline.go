@@ -176,6 +176,10 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 			mapped := resolveAndMapType(resp.Body, info, pkg, typeIdx)
 			if mapped != nil {
 				responses[i].Body = mapped
+			} else {
+				// Body is a synthetic type (e.g. arpc envelope) — resolve
+				// any nested type references inside its struct fields.
+				deepResolveFields(resp.Body, info, pkg, typeIdx)
 			}
 		}
 	}
@@ -268,6 +272,37 @@ func resolveAndMapType(td *model.TypeDef, info *types.Info, pkg *packages.Packag
 
 	mapped := mapper.MapType(t, pkg)
 	return &mapped
+}
+
+// deepResolveFields recursively walks a TypeDef's struct fields and resolves
+// any that are shallow type references (have Name+Package but no Fields) by
+// looking them up in the type index and mapping them fully. This handles
+// synthetic types like the arpc envelope whose inner fields reference real types.
+func deepResolveFields(td *model.TypeDef, info *types.Info, pkg *packages.Package, typeIdx map[string]map[string]types.Type) {
+	if td == nil || td.Kind != model.KindStruct {
+		return
+	}
+	for i := range td.Fields {
+		f := &td.Fields[i]
+		// If the field type is a reference (has a package but no fields), resolve it.
+		if f.Type.Package != "" && f.Type.Kind == "" && len(f.Type.Fields) == 0 {
+			mapped := resolveAndMapType(&f.Type, info, pkg, typeIdx)
+			if mapped != nil {
+				f.Type = *mapped
+			}
+		}
+		// Also resolve Elem for slice/map fields.
+		if f.Type.Elem != nil && f.Type.Elem.Package != "" && len(f.Type.Elem.Fields) == 0 {
+			mapped := resolveAndMapType(f.Type.Elem, info, pkg, typeIdx)
+			if mapped != nil {
+				f.Type.Elem = mapped
+			}
+		}
+		// Recurse into nested structs.
+		if f.Type.Kind == model.KindStruct {
+			deepResolveFields(&f.Type, info, pkg, typeIdx)
+		}
+	}
 }
 
 // buildTypeIndex builds a two-level map (pkgPath → typeName → types.Type) by
