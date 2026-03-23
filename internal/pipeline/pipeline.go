@@ -110,6 +110,7 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 	var handlerLine int
 
 	var deprecated bool
+	var description string
 
 	// The handler may live in a different package than the route registration.
 	// Use the TypesInfo from the handler's own package so that type lookups on
@@ -126,8 +127,9 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 		paramNames = resolver.ResolveHandlerParams(funcDecl.Type, handlerInfo)
 		handlerName = funcDecl.Name.Name
 		handlerFile, handlerLine = posToFileLine(funcDecl.Pos(), pkgs)
-		// Check for // Deprecated: comment on the handler.
+		// Extract doc comment and check for Deprecated.
 		if funcDecl.Doc != nil {
+			description = strings.TrimSpace(funcDecl.Doc.Text())
 			for _, comment := range funcDecl.Doc.List {
 				if strings.Contains(comment.Text, "Deprecated:") {
 					deprecated = true
@@ -213,6 +215,7 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 		Method:      route.Method,
 		Path:        route.Path,
 		Summary:     summary,
+		Description: description,
 		HandlerName: qualifiedName,
 		Package:     handlerPkg,
 		File:        handlerFile,

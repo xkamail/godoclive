@@ -5,6 +5,7 @@ type EndpointDef struct {
 	Method      string        // GET, POST, PUT, DELETE, PATCH
 	Path        string        // /users/{id}  — normalized, chi + gin → same format
 	Summary     string        // Inferred: GetUserByID → "Get User By ID"
+	Description string        // From handler's Go doc comment
 	HandlerName string        // Original: handlers.GetUserByID
 	Package     string        // Full package import path
 	File        string        // Source file path

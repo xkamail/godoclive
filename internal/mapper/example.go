@@ -75,6 +75,40 @@ func generateExample(t types.Type, jsonName string) interface{} {
 			return false
 		}
 	case *types.Slice:
+		// For slices of structs/named types, generate a one-element example.
+		elem := u.Elem()
+		if ptr, ok := elem.(*types.Pointer); ok {
+			elem = ptr.Elem()
+		}
+		if named, ok := elem.(*types.Named); ok {
+			if st, ok := named.Underlying().(*types.Struct); ok {
+				obj := make(map[string]interface{})
+				for i := 0; i < st.NumFields(); i++ {
+					field := st.Field(i)
+					if !field.Exported() {
+						continue
+					}
+					tag := st.Tag(i)
+					jsonName := field.Name()
+					if idx := strings.Index(tag, `json:"`); idx >= 0 {
+						rest := tag[idx+6:]
+						if end := strings.Index(rest, `"`); end >= 0 {
+							name := rest[:end]
+							if comma := strings.Index(name, ","); comma >= 0 {
+								name = name[:comma]
+							}
+							if name != "-" && name != "" {
+								jsonName = name
+							}
+						}
+					}
+					obj[jsonName] = generateExample(field.Type(), jsonName)
+				}
+				if len(obj) > 0 {
+					return []interface{}{obj}
+				}
+			}
+		}
 		return []interface{}{}
 	case *types.Map:
 		return map[string]interface{}{}

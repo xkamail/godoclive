@@ -60,6 +60,7 @@ type apiEndpoint struct {
 	Method      string        `json:"method"`
 	Path        string        `json:"path"`
 	Summary     string        `json:"summary"`
+	Description string        `json:"description,omitempty"`
 	Tag         string        `json:"tag"`
 	Tags        []string      `json:"tags,omitempty"`
 	HandlerName string        `json:"handlerName"`
@@ -139,6 +140,7 @@ func buildAPIData(endpoints []model.EndpointDef, cfg GeneratorConfig) apiData {
 			Method:      ep.Method,
 			Path:        ep.Path,
 			Summary:     ep.Summary,
+			Description: ep.Description,
 			HandlerName: ep.HandlerName,
 			Deprecated:  ep.Deprecated,
 			Unresolved:  ep.Unresolved,
@@ -230,7 +232,21 @@ func buildStructExample(td *model.TypeDef) map[string]interface{} {
 		if f.JSONName == "" || f.JSONName == "-" {
 			continue
 		}
-		obj[f.JSONName] = f.Example
+		if f.Example != nil {
+			obj[f.JSONName] = f.Example
+		} else if f.Type.Kind == model.KindStruct && len(f.Type.Fields) > 0 {
+			// Recurse into nested structs.
+			obj[f.JSONName] = buildStructExample(&f.Type)
+		} else if f.Type.Kind == model.KindSlice && f.Type.Elem != nil && f.Type.Elem.Kind == model.KindStruct {
+			// Slice of structs — generate one-element array example.
+			if inner := buildStructExample(f.Type.Elem); inner != nil {
+				obj[f.JSONName] = []interface{}{inner}
+			} else {
+				obj[f.JSONName] = []interface{}{}
+			}
+		} else {
+			obj[f.JSONName] = f.Example
+		}
 	}
 	if len(obj) == 0 {
 		return nil
@@ -279,6 +295,13 @@ func convertResponses(responses []model.ResponseDef) []apiResponse {
 				exBytes, err := json.MarshalIndent(r.Body.Example, "", "  ")
 				if err == nil {
 					ar.Example = string(exBytes)
+				}
+			} else if r.Body.Kind == model.KindStruct && len(r.Body.Fields) > 0 {
+				if obj := buildStructExample(r.Body); obj != nil {
+					exBytes, err := json.MarshalIndent(obj, "", "  ")
+					if err == nil {
+						ar.Example = string(exBytes)
+					}
 				}
 			}
 		}

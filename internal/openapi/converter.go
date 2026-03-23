@@ -119,6 +119,7 @@ func (c *converter) convertEndpoint(ep model.EndpointDef) *Operation {
 	op := &Operation{
 		OperationID: toOperationID(ep.Method, ep.Path),
 		Summary:     ep.Summary,
+		Description: ep.Description,
 		Tags:        ep.Tags,
 		Deprecated:  ep.Deprecated,
 		Responses:   make(map[string]*Response),
