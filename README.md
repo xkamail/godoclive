@@ -296,6 +296,9 @@ func main() {
     // Analyze this project's source code and serve docs at /docs
     endpoints, err := godoclive.Analyze(".", "./...",
         godoclive.WithTitle("My API"),
+        godoclive.WithMounts(
+            godoclive.MountConfig{Package: "backoffice", Prefix: "/backoffice"},
+        ),
     )
     if err != nil {
         log.Fatal(err)

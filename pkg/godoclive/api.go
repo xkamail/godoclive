@@ -89,6 +89,7 @@ func WithMounts(mounts ...MountConfig) Option {
 // Analyze runs the analysis pipeline on the given Go packages and returns
 // the extracted endpoint contracts. The pattern should be a directory path
 // with an optional package pattern suffix (e.g. "./..." or "./cmd/...").
+// Programmatic mounts (via WithMounts) are merged with any .godoclive.yaml mounts.
 func Analyze(dir, pattern string, opts ...Option) ([]EndpointDef, error) {
 	o := &Options{}
 	for _, opt := range opts {
@@ -158,9 +159,21 @@ func Generate(endpoints []EndpointDef, opts ...Option) error {
 // self-contained HTML page. The HTML is generated once from the provided
 // endpoints and served on every request.
 //
+// Defaults: Theme="dark", Title="API Documentation", Version="v1.0.0".
+//
 // Usage:
 //
-//	mux.Handle("/docs", godoclive.Handler(endpoints, godoclive.WithTitle("My API")))
+//	endpoints, _ := godoclive.Analyze(".", "./...",
+//	    godoclive.WithMounts(
+//	        godoclive.MountConfig{Package: "backoffice", Prefix: "/backoffice"},
+//	    ),
+//	)
+//	mux.Handle("/docs", godoclive.Handler(endpoints,
+//	    godoclive.WithTitle("My API"),
+//	    godoclive.WithVersion("v2.0.0"),
+//	    godoclive.WithBaseURL("http://localhost:8080"),
+//	    godoclive.WithTheme("dark"),
+//	))
 func Handler(endpoints []EndpointDef, opts ...Option) http.Handler {
 	o := &Options{Theme: "dark"}
 	for _, opt := range opts {

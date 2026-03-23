@@ -859,8 +859,10 @@
   // ============================================================
   function buildFieldTable(fields) {
     var hasDoc = hasDocDeep(fields);
+    var hasExample = hasExampleDeep(fields);
     var h = '<table class="param-table"><thead><tr>';
     h += '<th>Field</th><th>Type</th><th>Required</th>';
+    if (hasExample) h += '<th>Example</th>';
     if (hasDoc) h += '<th>Description</th>';
     h += '</tr></thead><tbody>';
     var rows = '';
@@ -876,6 +878,7 @@
           rows += '<span class="field-required-text"> required</span>';
         }
         rows += '</td>';
+        if (hasExample) rows += '<td><span class="param-example">' + esc(f.example || '---') + '</span></td>';
         if (hasDoc) rows += '<td>' + (f.doc ? esc(f.doc) : '') + '</td>';
         rows += '</tr>';
         if (f.fields && f.fields.length > 0) {
@@ -892,6 +895,14 @@
     for (var i = 0; i < fields.length; i++) {
       if (fields[i].doc) return true;
       if (fields[i].fields && hasDocDeep(fields[i].fields)) return true;
+    }
+    return false;
+  }
+
+  function hasExampleDeep(fields) {
+    for (var i = 0; i < fields.length; i++) {
+      if (fields[i].example) return true;
+      if (fields[i].fields && hasExampleDeep(fields[i].fields)) return true;
     }
     return false;
   }
