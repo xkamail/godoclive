@@ -2167,3 +2167,53 @@ func TestPipeline_GorillaBasic_RegexParam(t *testing.T) {
 	}
 }
 
+func TestPipeline_CrossMountBackofficeTags(t *testing.T) {
+	dir := testdataDir("stdlib-cross-mount")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	// Backoffice routes should have both "backoffice" and module tags.
+	gameList := findEndpoint(eps, "POST", "/backoffice/game.list")
+	if gameList == nil {
+		t.Fatal("POST /backoffice/game.list not found")
+	}
+	if len(gameList.Tags) < 2 {
+		t.Fatalf("expected at least 2 tags [backoffice, game], got %v", gameList.Tags)
+	}
+	if gameList.Tags[0] != "backoffice" {
+		t.Errorf("expected first tag 'backoffice', got %q", gameList.Tags[0])
+	}
+	if gameList.Tags[1] != "game" {
+		t.Errorf("expected second tag 'game', got %q", gameList.Tags[1])
+	}
+
+	// auth.signIn is under backoffice but not a nested module — should have ["backoffice", "auth"].
+	signIn := findEndpoint(eps, "POST", "/backoffice/auth.signIn")
+	if signIn == nil {
+		t.Fatal("POST /backoffice/auth.signIn not found")
+	}
+	if len(signIn.Tags) < 2 {
+		t.Fatalf("expected at least 2 tags [backoffice, auth], got %v", signIn.Tags)
+	}
+	if signIn.Tags[0] != "backoffice" {
+		t.Errorf("expected first tag 'backoffice', got %q", signIn.Tags[0])
+	}
+
+	// Health check at root — no backoffice tag.
+	health := findEndpoint(eps, "GET", "/health")
+	if health == nil {
+		t.Fatal("GET /health not found")
+	}
+	hasBackoffice := false
+	for _, tag := range health.Tags {
+		if tag == "backoffice" {
+			hasBackoffice = true
+		}
+	}
+	if hasBackoffice {
+		t.Error("GET /health should not have 'backoffice' tag")
+	}
+}
+

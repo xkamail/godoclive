@@ -194,10 +194,11 @@ func processRoute(route extractor.RawRoute, pkgs []*packages.Package, typeIdx ma
 	// 8. Infer summary and tags.
 	summary := model.InferSummary(handlerName)
 
-	// For arpc-style paths (e.g. /site.list), use the module prefix as tag.
+	// For arpc-style paths (e.g. /site.list, /backoffice/game.list),
+	// collect all meaningful segments as tags (mount prefix + module).
 	var tags []string
-	if tag := tagFromPath(route.Path); tag != "" && strings.Contains(strings.Trim(route.Path, "/"), ".") {
-		tags = []string{tag}
+	if arpcTags := tagsFromArpcPath(route.Path); len(arpcTags) > 0 && strings.Contains(strings.Trim(route.Path, "/"), ".") {
+		tags = arpcTags
 	} else {
 		tags = []string{model.InferTag(handlerName)}
 		if tags[0] == "" {
@@ -377,6 +378,30 @@ func tagFromPath(path string) string {
 		return seg
 	}
 	return ""
+}
+
+// tagsFromArpcPath extracts all meaningful path segments as tags for arpc-style paths.
+// e.g. "/backoffice/game.list" → ["backoffice", "game"],
+//
+//	"/site.list" → ["site"],
+//	"/api/v1/backoffice/game.create" → ["backoffice", "game"].
+func tagsFromArpcPath(path string) []string {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	var tags []string
+	for _, seg := range segments {
+		if seg == "" || seg == "api" || seg == "v1" || seg == "v2" || seg == "v3" {
+			continue
+		}
+		if strings.HasPrefix(seg, "{") {
+			continue
+		}
+		if dotIdx := strings.Index(seg, "."); dotIdx > 0 {
+			tags = append(tags, seg[:dotIdx])
+		} else {
+			tags = append(tags, seg)
+		}
+	}
+	return tags
 }
 
 // findInfoForFuncDecl returns the TypesInfo for the package that contains fd by

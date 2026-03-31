@@ -134,6 +134,12 @@ func ApplyMounts(endpoints []model.EndpointDef, mounts []MountConfig) []model.En
 			}
 			if strings.Contains(endpoints[i].Package, m.Package) {
 				endpoints[i].Path = strings.TrimSuffix(m.Prefix, "/") + endpoints[i].Path
+				// Prepend the mount name as a tag so endpoints are grouped
+				// under their mount prefix in the generated documentation.
+				mountTag := strings.Trim(m.Prefix, "/")
+				if mountTag != "" {
+					endpoints[i].Tags = append([]string{mountTag}, endpoints[i].Tags...)
+				}
 				break
 			}
 		}
