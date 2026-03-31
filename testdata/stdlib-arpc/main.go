@@ -1,40 +1,42 @@
 package main
 
 import (
-	"context"
 	"net/http"
+	"strings"
 
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/arpc"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/auth"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/httpmux"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/site"
 )
 
 func main() {
-	mux := http.NewServeMux()
+	mux := httpmux.New()
 	am := &arpc.Manager{}
 	Mount(mux, am)
 	http.ListenAndServe(":8080", mux)
 }
 
-func authMiddleware(ctx context.Context) (context.Context, error) {
-	return ctx, nil
-}
+var errUnauthorized = arpc.NewErrorCode("unauthorized", "unauthorized")
 
-func protect(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
-	})
+func authMiddleware(actx *arpc.MiddlewareContext) error {
+	h := actx.Request().Header.Get("Authorization")
+	if !strings.HasPrefix(h, "Bearer ") {
+		return errUnauthorized
+	}
+	return nil
 }
 
 // Mount registers all routes.
-func Mount(mux *http.ServeMux, am *arpc.Manager) {
+func Mount(mux *httpmux.Mux, am *arpc.Manager) {
 	// Public HTTP handler
 	mux.HandleFunc("GET /auth/{provider}", auth.ProviderRedirect)
 
-	// arpc handlers
+	// Public arpc handlers
 	mux.Handle("POST /site.list", am.Handler(site.List))
 	mux.Handle("POST /site.create", am.Handler(site.Create))
 
-	// Protected arpc handler
-	mux.Handle("POST /auth.me", protect(am.Handler(auth.Me)))
+	// Protected arpc routes (bearer token auth)
+	a := mux.Group("", am.Middleware(authMiddleware))
+	a.Handle("POST /auth.me", am.Handler(auth.Me))
 }

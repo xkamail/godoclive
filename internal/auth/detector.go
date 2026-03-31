@@ -3,6 +3,7 @@ package auth
 import (
 	"go/ast"
 	"go/types"
+	"strings"
 
 	"github.com/xkamail/godoclive/internal/model"
 	"golang.org/x/tools/go/packages"
@@ -46,13 +47,74 @@ func DetectAuth(middlewares []ast.Expr, info *types.Info, pkgs []*packages.Packa
 }
 
 // detectFromExpr resolves a middleware expression to its function body and
-// scans for auth patterns.
+// scans for auth patterns. For wrapper-style middleware like am.Middleware(authMiddleware),
+// it also scans the argument function bodies.
 func detectFromExpr(expr ast.Expr, info *types.Info, pkgs []*packages.Package) []model.AuthScheme {
 	body := resolveMiddlewareBody(expr, info, pkgs)
-	if body == nil {
-		return nil
+	if body != nil {
+		if schemes := scanBodyForAuth(body, info, pkgs); len(schemes) > 0 {
+			return schemes
+		}
 	}
-	return scanBodyForAuth(body, info, pkgs)
+
+	// For CallExpr middleware (e.g., am.Middleware(authMiddleware)), also resolve
+	// and scan the argument function bodies — the inner middleware may contain
+	// recognizable auth patterns like actx.Request().Header.Get("Authorization").
+	if call, ok := expr.(*ast.CallExpr); ok {
+		for _, arg := range call.Args {
+			argBody := resolveMiddlewareBody(arg, info, pkgs)
+			if argBody != nil {
+				if schemes := scanBodyForAuth(argBody, info, pkgs); len(schemes) > 0 {
+					return schemes
+				}
+			}
+		}
+	}
+
+	// Fallback: infer auth from the middleware function name.
+	// If the expression or its arguments reference a function whose name contains
+	// "auth" (e.g., authMiddleware), assume bearer token authentication.
+	return inferAuthFromName(expr)
+}
+
+// inferAuthFromName checks if a middleware expression or its arguments reference
+// a function whose name suggests authentication (e.g., "authMiddleware").
+// When such a name is found, bearer token auth is assumed.
+func inferAuthFromName(expr ast.Expr) []model.AuthScheme {
+	if name := exprFuncName(expr); isAuthFuncName(name) {
+		return []model.AuthScheme{model.AuthBearer}
+	}
+
+	// Check call arguments: am.Middleware(authMiddleware)
+	if call, ok := expr.(*ast.CallExpr); ok {
+		for _, arg := range call.Args {
+			if schemes := inferAuthFromName(arg); len(schemes) > 0 {
+				return schemes
+			}
+		}
+	}
+
+	return nil
+}
+
+// exprFuncName extracts the function name from an expression.
+func exprFuncName(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name
+	case *ast.SelectorExpr:
+		return e.Sel.Name
+	}
+	return ""
+}
+
+// isAuthFuncName returns true if the function name suggests authentication.
+func isAuthFuncName(name string) bool {
+	if name == "" {
+		return false
+	}
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "auth")
 }
 
 // resolveMiddlewareBody resolves a middleware expression (Ident, SelectorExpr,

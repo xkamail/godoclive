@@ -130,6 +130,117 @@ func TestDetectAuth_Basic(t *testing.T) {
 	t.Fatal("GET /admin/stats route not found")
 }
 
+func TestDetectAuth_ArpcMiddleware(t *testing.T) {
+	dir := testdataDir("stdlib-arpc")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	info := pkgs[0].TypesInfo
+
+	// POST /auth.me is in the protected group (am.Middleware(authMiddleware))
+	// and authMiddleware checks actx.Request().Header.Get("Authorization")
+	// with a "Bearer " prefix — should detect bearer auth.
+	for _, route := range routes {
+		if route.Method == "POST" && route.Path == "/auth.me" {
+			authDef := auth.DetectAuth(route.Middlewares, info, pkgs)
+			if !authDef.Required {
+				t.Error("POST /auth.me should require auth")
+			}
+			if len(authDef.Schemes) == 0 {
+				t.Fatal("expected at least one auth scheme")
+			}
+			found := false
+			for _, s := range authDef.Schemes {
+				if s == model.AuthBearer {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected bearer scheme, got %v", authDef.Schemes)
+			}
+			return
+		}
+	}
+	t.Fatal("POST /auth.me route not found")
+}
+
+func TestDetectAuth_ArpcPublicRoute(t *testing.T) {
+	dir := testdataDir("stdlib-arpc")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	info := pkgs[0].TypesInfo
+
+	// POST /site.list is public (no auth middleware group) — should have no auth.
+	for _, route := range routes {
+		if route.Method == "POST" && route.Path == "/site.list" {
+			authDef := auth.DetectAuth(route.Middlewares, info, pkgs)
+			if authDef.Required {
+				t.Error("POST /site.list should not require auth")
+			}
+			if len(authDef.Schemes) != 0 {
+				t.Errorf("expected no schemes, got %v", authDef.Schemes)
+			}
+			return
+		}
+	}
+	t.Fatal("POST /site.list route not found")
+}
+
+func TestDetectAuth_ArpcCrossMount(t *testing.T) {
+	dir := testdataDir("stdlib-cross-mount")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	info := pkgs[0].TypesInfo
+
+	// POST /backoffice/game.list is in the protected group — should detect bearer auth
+	// from authMiddleware checking actx.Request().Header.Get("Authorization").
+	for _, route := range routes {
+		if route.Method == "POST" && route.Path == "/backoffice/game.list" {
+			authDef := auth.DetectAuth(route.Middlewares, info, pkgs)
+			if !authDef.Required {
+				t.Error("POST /game.list should require auth")
+			}
+			found := false
+			for _, s := range authDef.Schemes {
+				if s == model.AuthBearer {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected bearer scheme, got %v", authDef.Schemes)
+			}
+			return
+		}
+	}
+	t.Fatal("POST /backoffice/game.list route not found")
+}
+
 func TestDetectAuth_Public(t *testing.T) {
 	dir := testdataDir("mixed-auth")
 	pkgs, err := loader.LoadPackages(dir, "./...")

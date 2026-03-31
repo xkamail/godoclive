@@ -2,13 +2,21 @@ package backoffice
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/xkamail/godoclive/testdata/stdlib-cross-mount/arpc"
 	"github.com/xkamail/godoclive/testdata/stdlib-cross-mount/backoffice/game"
 	"github.com/xkamail/godoclive/testdata/stdlib-cross-mount/httpmux"
 )
 
-func authMiddleware(ctx *arpc.MiddlewareContext) error {
+var errUnauthorized = errors.New("unauthorized")
+
+func authMiddleware(actx *arpc.MiddlewareContext) error {
+	h := actx.Request().Header.Get("Authorization")
+	if !strings.HasPrefix(h, "Bearer ") {
+		return errUnauthorized
+	}
 	return nil
 }
 
