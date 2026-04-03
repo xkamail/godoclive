@@ -145,10 +145,34 @@ func (c *converter) convertEndpoint(ep model.EndpointDef) *Operation {
 	if len(ep.Responses) == 0 {
 		op.Responses["200"] = &Response{Description: "Successful response"}
 	} else {
+		// Separate arpc error responses (Source="arpc") from normal responses.
+		// Arpc errors share status 200 with the success response, so we merge
+		// their descriptions rather than overwriting the success schema.
+		var arpcErrors []model.ResponseDef
 		for _, r := range ep.Responses {
+			if r.Source == "arpc" {
+				arpcErrors = append(arpcErrors, r)
+				continue
+			}
 			resp := c.convertResponse(r)
 			code := fmt.Sprintf("%d", r.StatusCode)
-			op.Responses[code] = resp
+			if _, exists := op.Responses[code]; !exists {
+				op.Responses[code] = resp
+			}
+		}
+		// Append arpc error descriptions to the 200 response.
+		if len(arpcErrors) > 0 {
+			if existing, ok := op.Responses["200"]; ok {
+				var errorLines []string
+				for _, ae := range arpcErrors {
+					if ae.Description != "" {
+						errorLines = append(errorLines, ae.Description)
+					}
+				}
+				if len(errorLines) > 0 {
+					existing.Description += "\n\nPossible errors (ok=false):\n- " + strings.Join(errorLines, "\n- ")
+				}
+			}
 		}
 	}
 

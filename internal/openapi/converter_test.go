@@ -429,6 +429,73 @@ func TestNullableAndDeprecatedFields(t *testing.T) {
 	}
 }
 
+func TestArpcErrorsDoNotOverwriteSuccessResponse(t *testing.T) {
+	// Simulate an arpc handler with a success response and error responses,
+	// all at status 200. The success response should be kept, and errors
+	// should be merged into the description.
+	successBody := &model.TypeDef{
+		Name: "QuickBuyResultResponse",
+		Kind: model.KindStruct,
+		Fields: []model.FieldDef{
+			{Name: "OK", JSONName: "ok", Type: model.TypeDef{Name: "bool", Kind: model.KindPrimitive}, Required: true},
+			{Name: "Result", JSONName: "result", Type: model.TypeDef{
+				Name: "QuickBuyResult",
+				Kind: model.KindStruct,
+				Fields: []model.FieldDef{
+					{Name: "OrderID", JSONName: "orderId", Type: model.TypeDef{Name: "string", Kind: model.KindPrimitive}},
+				},
+			}},
+		},
+	}
+	endpoints := []model.EndpointDef{
+		{
+			Method: "POST",
+			Path:   "/cart.quickBuy",
+			Tags:   []string{"cart"},
+			Responses: []model.ResponseDef{
+				{
+					StatusCode:  200,
+					Body:        successBody,
+					Description: "OK",
+					ContentType: "application/json",
+				},
+				{
+					StatusCode:  200,
+					Description: "cart/item-not-found: game item not found",
+					ContentType: "application/json",
+					Source:      "arpc",
+				},
+			},
+		},
+	}
+
+	doc := Generate(endpoints, Config{})
+
+	op := doc.Paths["/cart.quickBuy"].Post
+	if op == nil {
+		t.Fatal("expected POST operation")
+	}
+	resp, ok := op.Responses["200"]
+	if !ok {
+		t.Fatal("expected 200 response")
+	}
+	// The success response body should be kept (not overwritten by error).
+	if resp.Content == nil {
+		t.Fatal("expected response content with success body schema")
+	}
+	mt := resp.Content["application/json"]
+	if mt == nil || mt.Schema == nil {
+		t.Fatal("expected schema in 200 response")
+	}
+	if !strings.Contains(mt.Schema.Ref, "QuickBuyResultResponse") {
+		t.Errorf("expected QuickBuyResultResponse ref, got %s", mt.Schema.Ref)
+	}
+	// Error description should be merged in.
+	if !strings.Contains(resp.Description, "cart/item-not-found") {
+		t.Errorf("expected arpc error in description, got %s", resp.Description)
+	}
+}
+
 func TestConfigPassthrough(t *testing.T) {
 	doc := Generate(nil, Config{
 		Title:       "My API",
