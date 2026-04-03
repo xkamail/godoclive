@@ -747,3 +747,59 @@ func TestStdlibExtractor_PatternParsing(t *testing.T) {
 		t.Error("path parameter /users/{id} not found")
 	}
 }
+
+func TestStdlibExtractor_ChainedMiddleware(t *testing.T) {
+	dir := testdataDir("stdlib-arpc")
+	pkgs, err := loader.LoadPackages(dir, "./...")
+	if err != nil {
+		t.Fatalf("LoadPackages failed: %v", err)
+	}
+
+	ext := &extractor.StdlibExtractor{}
+	routes, err := ext.Extract(pkgs)
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+
+	// stdlib-arpc has:
+	// GET /auth/{provider} (public HTTP handler)
+	// POST /site.list, POST /site.create (public arpc)
+	// POST /auth.me (group with authMiddleware)
+	// POST /cart.add, POST /cart.me (chained middleware in bare block)
+	expected := map[string]bool{
+		"GET /auth/{provider}": true,
+		"POST /site.list":     true,
+		"POST /site.create":   true,
+		"POST /auth.me":       true,
+		"POST /cart.add":      true,
+		"POST /cart.me":       true,
+	}
+
+	if len(routes) != len(expected) {
+		t.Errorf("expected %d routes, got %d", len(expected), len(routes))
+		for _, r := range routes {
+			t.Logf("  found: %s %s (line %d)", r.Method, r.Path, r.Line)
+		}
+	}
+
+	for _, r := range routes {
+		key := r.Method + " " + r.Path
+		if !expected[key] {
+			t.Errorf("unexpected route: %s", key)
+		}
+		delete(expected, key)
+	}
+
+	for key := range expected {
+		t.Errorf("missing route: %s", key)
+	}
+
+	// Verify chained middleware routes have middleware captured.
+	for _, r := range routes {
+		if r.Path == "/cart.add" || r.Path == "/cart.me" {
+			if len(r.Middlewares) == 0 {
+				t.Errorf("route %s %s should have middleware from chained .Middleware() and group", r.Method, r.Path)
+			}
+		}
+	}
+}

@@ -270,6 +270,9 @@ func (w *stdlibWalker) walkBlock(stmts []ast.Stmt, parentMW []ast.Expr) {
 				continue
 			}
 			w.processCall(call, scopeMW)
+		case *ast.BlockStmt:
+			// Recurse into bare blocks: { rl := ...; a.Handle(...) }
+			w.walkBlock(s.List, scopeMW)
 		}
 	}
 }
@@ -402,6 +405,23 @@ func (w *stdlibWalker) processCall(call *ast.CallExpr, scopeMW []ast.Expr) {
 				groupMW := concatExprs(scopeMW, gi.middlewares)
 				w.addRouteWithPrefix(call, groupMW, gi.prefix)
 				return
+			}
+		}
+		// Handle chained method calls: a.Middleware(rl).Handle(...)
+		// The receiver is a *ast.CallExpr when methods are chained.
+		if chainCall, ok := sel.X.(*ast.CallExpr); ok {
+			base, chainMW := unwrapMethodChain(chainCall)
+			if ident, ok := base.(*ast.Ident); ok {
+				allMW := concatExprs(scopeMW, chainMW)
+				if w.muxVars[ident.Name] {
+					w.addRoute(call, allMW)
+					return
+				}
+				if gi := w.groups[ident.Name]; gi != nil {
+					groupMW := concatExprs(allMW, gi.middlewares)
+					w.addRouteWithPrefix(call, groupMW, gi.prefix)
+					return
+				}
 			}
 		}
 		// Fallback: accept any x.HandleFunc/x.Handle where the first arg
@@ -537,6 +557,27 @@ func looksLikeHTTPPattern(s string) bool {
 	}
 	parts := strings.SplitN(s, " ", 2)
 	return len(parts) == 2 && isHTTPMethod(parts[0]) && strings.HasPrefix(strings.TrimSpace(parts[1]), "/")
+}
+
+// unwrapMethodChain walks up a chain of method calls like a.Middleware(x).Middleware(y)
+// and returns the base receiver and collected middleware arguments.
+// Only collects arguments from calls named "Middleware".
+func unwrapMethodChain(call *ast.CallExpr) (base ast.Expr, middlewares []ast.Expr) {
+	for {
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return call, middlewares
+		}
+		if sel.Sel.Name == "Middleware" {
+			middlewares = append(middlewares, call.Args...)
+		}
+		innerCall, ok := sel.X.(*ast.CallExpr)
+		if !ok {
+			// Base receiver found (an identifier or other non-call expression).
+			return sel.X, middlewares
+		}
+		call = innerCall
+	}
 }
 
 // unwrapMiddleware unwraps function call wrapping like authMiddleware(handler),

@@ -16,3 +16,8 @@ func New() *Mux {
 func (m *Mux) Group(prefix string, mw ...func(http.Handler) http.Handler) *Mux {
 	return &Mux{ServeMux: m.ServeMux}
 }
+
+// Middleware returns a new Mux that applies the given middleware to all handlers.
+func (m *Mux) Middleware(mw ...func(http.Handler) http.Handler) *Mux {
+	return &Mux{ServeMux: m.ServeMux}
+}

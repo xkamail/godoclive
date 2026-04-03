@@ -6,6 +6,7 @@ import (
 
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/arpc"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/auth"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/cart"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/httpmux"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/site"
 )
@@ -39,4 +40,17 @@ func Mount(mux *httpmux.Mux, am *arpc.Manager) {
 	// Protected arpc routes (bearer token auth)
 	a := mux.Group("", am.Middleware(authMiddleware))
 	a.Handle("POST /auth.me", am.Handler(auth.Me))
+
+	// Chained middleware in a bare block (rate limiting)
+	{
+		rl := rateLimitMiddleware()
+		a.Middleware(rl).Handle("POST /cart.add", am.Handler(cart.Add))
+		a.Middleware(rl).Handle("POST /cart.me", am.Handler(cart.Me))
+	}
+}
+
+func rateLimitMiddleware() func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return h
+	}
 }
