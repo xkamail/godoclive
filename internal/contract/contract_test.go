@@ -10,6 +10,7 @@ import (
 	"github.com/xkamail/godoclive/internal/contract"
 	"github.com/xkamail/godoclive/internal/extractor"
 	"github.com/xkamail/godoclive/internal/loader"
+	"github.com/xkamail/godoclive/internal/model"
 	"github.com/xkamail/godoclive/internal/resolver"
 	"golang.org/x/tools/go/packages"
 )
@@ -784,6 +785,31 @@ func TestExtractContract_ArpcHandler(t *testing.T) {
 				}
 			}
 
+		case "POST /site.setHidden":
+			// Error-only handler: func(context.Context, *SetHiddenParams) error.
+			// Request body comes from the second param; result is encoded as {}.
+			if req.Body == nil {
+				t.Errorf("%s: expected request body (SetHiddenParams), got nil", key)
+			} else if req.Body.Name != "SetHiddenParams" {
+				t.Errorf("%s: expected body type 'SetHiddenParams', got %q", key, req.Body.Name)
+			}
+			// 200 OK envelope with empty-object result + arpc error response.
+			if len(responses) < 2 {
+				t.Errorf("%s: expected at least 2 responses, got %d", key, len(responses))
+			} else {
+				if responses[0].Body == nil || responses[0].Body.Name != "EmptyResultResponse" {
+					t.Errorf("%s: expected envelope 'EmptyResultResponse', got %v", key, responses[0].Body)
+				} else {
+					resultField := responses[0].Body.Fields[1]
+					if resultField.Type.Kind != model.KindStruct || len(resultField.Type.Fields) != 0 {
+						t.Errorf("%s: expected empty-object result, got %+v", key, resultField.Type)
+					}
+				}
+				if responses[1].Description != "site/not-found: site not found" {
+					t.Errorf("%s: expected error 'site/not-found: site not found', got %q", key, responses[1].Description)
+				}
+			}
+
 		case "POST /auth.me":
 			// Context-only handler: func(context.Context) (*MeResult, error)
 			// Should have no request body.
@@ -809,7 +835,7 @@ func TestExtractContract_ArpcHandler(t *testing.T) {
 	}
 
 	// Ensure all expected arpc routes were resolved and tested.
-	for _, expected := range []string{"POST /site.list", "POST /site.create", "POST /auth.me"} {
+	for _, expected := range []string{"POST /site.list", "POST /site.create", "POST /site.setHidden", "POST /auth.me"} {
 		if !tested[expected] {
 			t.Errorf("route %s was not resolved or tested", expected)
 		}

@@ -49,6 +49,21 @@ type CreateResult struct {
 	Domain string `json:"domain"`
 }
 
+// SetHiddenParams is the request for toggling a site's hidden state.
+type SetHiddenParams struct {
+	ID     string `json:"id"`
+	Hidden bool   `json:"hidden"`
+}
+
+// SetHidden toggles the hidden state of a site. It is an error-only handler:
+// func(context.Context, *T) error — arpc encodes a successful result as {}.
+func SetHidden(ctx context.Context, p *SetHiddenParams) error {
+	if p.ID == "" {
+		return arpc.NewErrorCode("site/not-found", "site not found")
+	}
+	return nil
+}
+
 // Create creates a new site.
 func Create(ctx context.Context, p *CreateParams) (*CreateResult, error) {
 	if p.Name == "" {

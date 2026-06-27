@@ -36,6 +36,7 @@ func Mount(mux *httpmux.Mux, am *arpc.Manager) {
 	// Public arpc handlers
 	mux.Handle("POST /site.list", am.Handler(site.List))
 	mux.Handle("POST /site.create", am.Handler(site.Create))
+	mux.Handle("POST /site.setHidden", am.Handler(site.SetHidden))
 
 	// Protected arpc routes (bearer token auth)
 	a := mux.Group("", am.Middleware(authMiddleware))

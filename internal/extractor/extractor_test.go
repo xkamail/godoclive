@@ -763,16 +763,17 @@ func TestStdlibExtractor_ChainedMiddleware(t *testing.T) {
 
 	// stdlib-arpc has:
 	// GET /auth/{provider} (public HTTP handler)
-	// POST /site.list, POST /site.create (public arpc)
+	// POST /site.list, POST /site.create, POST /site.setHidden (public arpc)
 	// POST /auth.me (group with authMiddleware)
 	// POST /cart.add, POST /cart.me (chained middleware in bare block)
 	expected := map[string]bool{
-		"GET /auth/{provider}": true,
-		"POST /site.list":     true,
-		"POST /site.create":   true,
-		"POST /auth.me":       true,
-		"POST /cart.add":      true,
-		"POST /cart.me":       true,
+		"GET /auth/{provider}":  true,
+		"POST /site.list":       true,
+		"POST /site.create":     true,
+		"POST /site.setHidden":  true,
+		"POST /auth.me":         true,
+		"POST /cart.add":        true,
+		"POST /cart.me":         true,
 	}
 
 	if len(routes) != len(expected) {

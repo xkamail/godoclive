@@ -136,8 +136,12 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 		return model.RequestDef{}, nil, false
 	}
 
-	// Require exactly 2 returns: (*U, error)
-	if fnType.Results == nil || fnType.Results.NumFields() != 2 {
+	// Require 1 or 2 returns: (error) or (*U, error)
+	numResults := 0
+	if fnType.Results != nil {
+		numResults = fnType.Results.NumFields()
+	}
+	if numResults < 1 || numResults > 2 {
 		return model.RequestDef{}, nil, false
 	}
 
@@ -166,13 +170,17 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 		}
 	}
 
-	// First return is the response body type.
-	resultType := info.TypeOf(fnType.Results.List[0].Type)
-	if resultType == nil {
-		return model.RequestDef{}, nil, false
-	}
-	if ptr, ok := resultType.(*types.Pointer); ok {
-		resultType = ptr.Elem()
+	// First return (if present) is the response body type. Error-only handlers
+	// (func(...) error) have no result type — arpc encodes result as {}.
+	var resultType types.Type
+	if numResults == 2 {
+		resultType = info.TypeOf(fnType.Results.List[0].Type)
+		if resultType == nil {
+			return model.RequestDef{}, nil, false
+		}
+		if ptr, ok := resultType.(*types.Pointer); ok {
+			resultType = ptr.Elem()
+		}
 	}
 
 	// Build path params from route pattern.
@@ -186,10 +194,25 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 		req.ContentType = "application/json"
 	}
 
-	// Build arpc envelope response: {"ok": true, "result": <ResultType>}
-	resultRef := typeRefDef(resultType)
+	// Build arpc envelope response: {"ok": true, "result": <ResultType>}.
+	// For error-only handlers there is no result type — arpc encodes result as
+	// an empty object {}.
+	resultField := model.FieldDef{
+		Name:     "Result",
+		JSONName: "result",
+	}
+	envelopeName := "EmptyResultResponse"
+	if resultType != nil {
+		resultRef := typeRefDef(resultType)
+		resultField.Type = *resultRef
+		envelopeName = resultRef.Name + "Response"
+	} else {
+		resultField.Type = model.TypeDef{Name: "struct{}", Kind: model.KindStruct}
+		resultField.Example = struct{}{}
+	}
+
 	okResponse := &model.TypeDef{
-		Name: resultRef.Name + "Response",
+		Name: envelopeName,
 		Kind: model.KindStruct,
 		Fields: []model.FieldDef{
 			{
@@ -199,11 +222,7 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 				Required: true,
 				Example:  true,
 			},
-			{
-				Name:     "Result",
-				JSONName: "result",
-				Type:     *resultRef,
-			},
+			resultField,
 		},
 	}
 
