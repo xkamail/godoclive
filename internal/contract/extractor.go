@@ -202,18 +202,24 @@ func extractArpcContract(route extractor.RawRoute, fnType *ast.FuncType, body *a
 		JSONName: "result",
 	}
 	envelopeName := "EmptyResultResponse"
+	// envelopePkg carries the result type's package so that two distinct result
+	// types sharing a short name (e.g. game.ListResult and user.ListResult) yield
+	// distinct envelope schema components instead of collapsing into one.
+	envelopePkg := ""
 	if resultType != nil {
 		resultRef := typeRefDef(resultType)
 		resultField.Type = *resultRef
 		envelopeName = resultRef.Name + "Response"
+		envelopePkg = resultRef.Package
 	} else {
 		resultField.Type = model.TypeDef{Name: "struct{}", Kind: model.KindStruct}
 		resultField.Example = struct{}{}
 	}
 
 	okResponse := &model.TypeDef{
-		Name: envelopeName,
-		Kind: model.KindStruct,
+		Name:    envelopeName,
+		Package: envelopePkg,
+		Kind:    model.KindStruct,
 		Fields: []model.FieldDef{
 			{
 				Name:     "OK",

@@ -7,8 +7,10 @@ import (
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/arpc"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/auth"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/cart"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/game"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/httpmux"
 	"github.com/xkamail/godoclive/testdata/stdlib-arpc/site"
+	"github.com/xkamail/godoclive/testdata/stdlib-arpc/user"
 )
 
 func main() {
@@ -35,6 +37,8 @@ func Mount(mux *httpmux.Mux, am *arpc.Manager) {
 
 	// Public arpc handlers
 	mux.Handle("POST /site.list", am.Handler(site.List))
+	mux.Handle("POST /game.list", am.Handler(game.List))
+	mux.Handle("POST /user.list", am.Handler(user.List))
 	mux.Handle("POST /site.create", am.Handler(site.Create))
 	mux.Handle("POST /site.setHidden", am.Handler(site.SetHidden))
 

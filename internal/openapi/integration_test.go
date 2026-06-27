@@ -119,6 +119,71 @@ func TestIntegration_StdlibBasic(t *testing.T) {
 	}
 }
 
+// TestIntegration_ArpcDuplicateResultNames verifies that two arpc handlers
+// whose result types share a short name (game.ListResult and user.ListResult,
+// each wrapping a distinct ListItem) get distinct envelope schemas instead of
+// collapsing into one. Regression test for the arpc envelope dropping the
+// result type's package, which made both endpoints $ref the same component and
+// reflect the wrong fields.
+func TestIntegration_ArpcDuplicateResultNames(t *testing.T) {
+	dir := testdataDir("stdlib-arpc")
+	eps, err := pipeline.RunPipeline(dir, "./...", nil)
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+
+	doc := openapi.Generate(eps, openapi.Config{Title: "Arpc", Version: "1.0.0"})
+	schemas := doc.Components.Schemas
+
+	// itemPropsFor walks an endpoint's 200 envelope → result → items array
+	// element and returns its property names.
+	itemPropsFor := func(path string) []string {
+		t.Helper()
+		op := doc.Paths[path].Post
+		if op == nil {
+			t.Fatalf("no POST operation for %s", path)
+		}
+		resolve := func(ref string) *openapi.Schema {
+			s := schemas[strings.TrimPrefix(ref, "#/components/schemas/")]
+			if s == nil {
+				t.Fatalf("unresolved ref %s", ref)
+			}
+			return s
+		}
+		env := resolve(op.Responses["200"].Content["application/json"].Schema.Ref)
+		result := resolve(env.Properties["result"].Ref)
+		items := result.Properties["items"]
+		elem := resolve(items.Items.Ref)
+		props := make([]string, 0, len(elem.Properties))
+		for name := range elem.Properties {
+			props = append(props, name)
+		}
+		return props
+	}
+
+	gameProps := itemPropsFor("/game.list")
+	userProps := itemPropsFor("/user.list")
+
+	// game.ListItem has slug/category/priority/hidden; user.ListItem has
+	// email/username. The two must not be confused.
+	assertHas := func(label string, props []string, want string) {
+		for _, p := range props {
+			if p == want {
+				return
+			}
+		}
+		t.Errorf("%s items expected field %q, got %v", label, want, props)
+	}
+	assertHas("game.list", gameProps, "slug")
+	assertHas("user.list", userProps, "email")
+
+	for _, p := range gameProps {
+		if p == "email" {
+			t.Errorf("game.list items leaked user.ListItem fields: %v", gameProps)
+		}
+	}
+}
+
 func TestIntegration_WriteJSON(t *testing.T) {
 	dir := testdataDir("chi-basic")
 	eps, err := pipeline.RunPipeline(dir, "./...", nil)
