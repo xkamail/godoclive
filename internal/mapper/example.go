@@ -44,9 +44,48 @@ var suffixHints = map[string]interface{}{
 	"_url": "https://example.com",
 }
 
+// wellKnownTypeExample returns an example value for well-known named types
+// (time.Time, decimal.Decimal, xid.ID). Pointers to these render as null,
+// since a pointer field represents an optional/nullable value.
+func wellKnownTypeExample(t types.Type) (interface{}, bool) {
+	if ptr, ok := t.(*types.Pointer); ok {
+		if _, ok := wellKnownNamedExample(ptr.Elem()); ok {
+			return nil, true
+		}
+		return nil, false
+	}
+	return wellKnownNamedExample(t)
+}
+
+func wellKnownNamedExample(t types.Type) (interface{}, bool) {
+	named, ok := t.(*types.Named)
+	if !ok {
+		return nil, false
+	}
+	obj := named.Obj()
+	if obj.Pkg() == nil {
+		return nil, false
+	}
+	switch obj.Pkg().Path() + "." + obj.Name() {
+	case "time.Time":
+		return "2024-01-15T10:30:00Z", true
+	case "github.com/shopspring/decimal.Decimal":
+		return 123.45, true
+	case "github.com/rs/xid.ID":
+		return "9m4e2mr0ui3e8a215n4g", true
+	}
+	return nil, false
+}
+
 // generateExample produces a realistic example value for a field based on
 // its JSON name (via heuristics) and then falls back to the Go type.
 func generateExample(t types.Type, jsonName string) interface{} {
+	// Well-known named types take priority so they render correctly
+	// regardless of field name (and pointers to them render as null).
+	if v, ok := wellKnownTypeExample(t); ok {
+		return v
+	}
+
 	lower := strings.ToLower(jsonName)
 
 	// Direct name match.

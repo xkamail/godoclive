@@ -77,6 +77,12 @@ func wellKnownType(named *types.Named) (model.TypeDef, bool) {
 			Name:    "number",
 			Example: "123.45",
 		}, true
+	case "github.com/rs/xid.ID":
+		return model.TypeDef{
+			Kind:    model.KindPrimitive,
+			Name:    "string",
+			Example: "9m4e2mr0ui3e8a215n4g",
+		}, true
 	case "encoding/json.RawMessage":
 		return model.TypeDef{
 			Kind:    model.KindInterface,
