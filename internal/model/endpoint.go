@@ -74,6 +74,7 @@ type TypeDef struct {
 	Fields    []FieldDef  // Populated for KindStruct
 	Elem      *TypeDef    // Populated for KindSlice (element type) and KindMap (value type)
 	IsPointer bool
+	Enum      []string    // Populated for KindPrimitive derived from a stringer-enum MarshalJSON
 	Example   interface{} // Auto-generated example value
 }
 

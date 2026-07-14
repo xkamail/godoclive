@@ -253,7 +253,14 @@ func (c *converter) typeDefToSchema(td *model.TypeDef) *Schema {
 		}
 		return s
 	case model.KindPrimitive:
-		return primitiveTypeToSchema(td.Name)
+		s := primitiveTypeToSchema(td.Name)
+		if len(td.Enum) > 0 {
+			s.Enum = td.Enum
+		}
+		if td.Example != nil {
+			s.Example = td.Example
+		}
+		return s
 	case model.KindInterface:
 		return &Schema{Type: "object"}
 	default:

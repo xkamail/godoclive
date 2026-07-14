@@ -115,6 +115,13 @@ func mapType(t types.Type, pkg *packages.Package, visited map[*types.Named]bool)
 		}
 		visited[named] = true
 		defer func() { delete(visited, named) }()
+
+		// Custom json.Marshaler: derive the schema from the real JSON output.
+		if pkg != nil {
+			if def, ok := marshalerShape(named, []*packages.Package{pkg}, visited); ok {
+				return def
+			}
+		}
 	}
 
 	switch u := t.Underlying().(type) {
@@ -156,6 +163,11 @@ func mapTypeWithPkgs(t types.Type, pkg *packages.Package, pkgs []*packages.Packa
 		defer func() { delete(visited, named) }()
 		// Resolve the correct package for this named type.
 		pkg = findPackageForGoType(named, pkgs)
+
+		// Custom json.Marshaler: derive the schema from the real JSON output.
+		if def, ok := marshalerShape(named, pkgs, visited); ok {
+			return def
+		}
 	}
 
 	switch u := t.Underlying().(type) {

@@ -50,11 +50,18 @@ func mapStruct(named *types.Named, st *types.Struct, pkg *packages.Package, visi
 		}
 		fd.Type = mapType(field.Type(), pkg, visited)
 		fd.Example = generateExample(field.Type(), jsonName)
+		if len(fd.Type.Enum) > 0 {
+			fd.Example = fd.Type.Enum[0]
+		}
 
 		// Embedded struct: inline fields (matches Go's JSON encoding behavior).
+		// An embedded field with an explicit json name is a named field, not
+		// anonymous, so it is not inlined.
 		if field.Embedded() && fd.Type.Kind == model.KindStruct {
-			def.Fields = append(def.Fields, fd.Type.Fields...)
-			continue
+			if name, _ := parseJSONTag(jsonTag); name == "" {
+				def.Fields = append(def.Fields, fd.Type.Fields...)
+				continue
+			}
 		}
 
 		def.Fields = append(def.Fields, fd)
@@ -101,10 +108,15 @@ func mapStructWithPkgs(named *types.Named, st *types.Struct, pkg *packages.Packa
 		}
 		fd.Type = mapTypeWithPkgs(field.Type(), pkg, pkgs, visited)
 		fd.Example = generateExample(field.Type(), jsonName)
+		if len(fd.Type.Enum) > 0 {
+			fd.Example = fd.Type.Enum[0]
+		}
 
 		if field.Embedded() && fd.Type.Kind == model.KindStruct {
-			def.Fields = append(def.Fields, fd.Type.Fields...)
-			continue
+			if name, _ := parseJSONTag(jsonTag); name == "" {
+				def.Fields = append(def.Fields, fd.Type.Fields...)
+				continue
+			}
 		}
 
 		def.Fields = append(def.Fields, fd)
