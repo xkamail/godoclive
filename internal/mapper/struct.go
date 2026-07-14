@@ -49,10 +49,7 @@ func mapStruct(named *types.Named, st *types.Struct, pkg *packages.Package, visi
 			Deprecated: fieldIsDeprecated(named, field, pkg),
 		}
 		fd.Type = mapType(field.Type(), pkg, visited)
-		fd.Example = generateExample(field.Type(), jsonName)
-		if len(fd.Type.Enum) > 0 {
-			fd.Example = fd.Type.Enum[0]
-		}
+		fd.Example = fieldExample(field.Type(), jsonName, &fd.Type)
 
 		// Embedded struct: inline fields (matches Go's JSON encoding behavior).
 		// An embedded field with an explicit json name is a named field, not
@@ -107,10 +104,7 @@ func mapStructWithPkgs(named *types.Named, st *types.Struct, pkg *packages.Packa
 			Deprecated: fieldIsDeprecated(named, field, pkg),
 		}
 		fd.Type = mapTypeWithPkgs(field.Type(), pkg, pkgs, visited)
-		fd.Example = generateExample(field.Type(), jsonName)
-		if len(fd.Type.Enum) > 0 {
-			fd.Example = fd.Type.Enum[0]
-		}
+		fd.Example = fieldExample(field.Type(), jsonName, &fd.Type)
 
 		if field.Embedded() && fd.Type.Kind == model.KindStruct {
 			if name, _ := parseJSONTag(jsonTag); name == "" {

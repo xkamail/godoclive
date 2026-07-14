@@ -3,6 +3,8 @@ package mapper
 import (
 	"go/types"
 	"strings"
+
+	"github.com/xkamail/godoclive/internal/model"
 )
 
 // nameHints maps common JSON field names to realistic example values.
@@ -75,6 +77,61 @@ func wellKnownNamedExample(t types.Type) (interface{}, bool) {
 		return "9m4e2mr0ui3e8a215n4g", true
 	}
 	return nil, false
+}
+
+// fieldExample computes a field's example, composing from the mapped TypeDef for
+// composite kinds (so enums and marshaler-derived shapes are honored) and falling
+// back to name/type heuristics for scalars.
+func fieldExample(t types.Type, jsonName string, td *model.TypeDef) interface{} {
+	switch td.Kind {
+	case model.KindStruct, model.KindSlice, model.KindMap, model.KindInterface:
+		return exampleFromTypeDef(td)
+	default:
+		if len(td.Enum) > 0 {
+			return td.Enum[0]
+		}
+		return generateExample(t, jsonName)
+	}
+}
+
+// exampleFromTypeDef composes an example value from an already-mapped TypeDef,
+// reusing the per-field examples computed during mapping. Unlike generateExample
+// (which re-walks raw Go types and is blind to custom json.Marshaler shapes and
+// stringer enums), this honors the derived schema — so a slice of enum values or
+// of marshaler-derived structs renders correctly.
+func exampleFromTypeDef(td *model.TypeDef) interface{} {
+	switch td.Kind {
+	case model.KindStruct:
+		obj := make(map[string]interface{})
+		for _, f := range td.Fields {
+			if f.JSONName == "" || f.JSONName == "-" {
+				continue
+			}
+			obj[f.JSONName] = f.Example
+		}
+		return obj
+	case model.KindSlice:
+		if td.Elem == nil {
+			return []interface{}{}
+		}
+		ev := exampleFromTypeDef(td.Elem)
+		if ev == nil {
+			return []interface{}{}
+		}
+		return []interface{}{ev}
+	case model.KindPrimitive:
+		if len(td.Enum) > 0 {
+			return td.Enum[0]
+		}
+		return td.Example
+	case model.KindMap, model.KindInterface:
+		if td.Example != nil {
+			return td.Example
+		}
+		return map[string]interface{}{}
+	default:
+		return td.Example
+	}
 }
 
 // generateExample produces a realistic example value for a field based on

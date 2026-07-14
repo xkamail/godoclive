@@ -64,3 +64,9 @@ type OrderResult struct {
 	Status Status   `json:"status"`
 	Page   Paginate `json:"page"`
 }
+
+// ListResult holds a slice of enum-bearing items — the composed example for the
+// slice must render the enum field as a string, not its integer value.
+type ListResult struct {
+	Items []OrderResult `json:"items"`
+}

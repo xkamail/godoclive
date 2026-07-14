@@ -67,6 +67,26 @@ func TestMarshaler_UnanalyzableFallsBackToObject(t *testing.T) {
 	}
 }
 
+func TestMarshaler_SliceExampleHonorsEnum(t *testing.T) {
+	_, td := loadType(t, testdataDir("marshaler"), "ListResult")
+
+	items := findField(td, "items")
+	if items == nil {
+		t.Fatal("field 'items' not found")
+	}
+	arr, ok := items.Example.([]interface{})
+	if !ok || len(arr) != 1 {
+		t.Fatalf("expected 1-element array example, got %#v", items.Example)
+	}
+	obj, ok := arr[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected object element, got %#v", arr[0])
+	}
+	if obj["status"] != "not_paid" {
+		t.Errorf("nested enum example: expected %q, got %#v", "not_paid", obj["status"])
+	}
+}
+
 func TestMarshaler_EnumFieldInStruct(t *testing.T) {
 	_, td := loadType(t, testdataDir("marshaler"), "OrderResult")
 
