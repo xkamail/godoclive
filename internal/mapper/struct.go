@@ -26,6 +26,15 @@ func mapStruct(named *types.Named, st *types.Struct, pkg *packages.Package, visi
 
 	for i := 0; i < st.NumFields(); i++ {
 		field := st.Field(i)
+
+		// encoding/json never marshals unexported fields; skip them so internal
+		// fields (e.g. protobuf's state/sizeCache/unknownFields) don't leak into
+		// the schema. Embedded unexported structs still have their exported
+		// fields promoted, so keep those.
+		if !field.Exported() && !field.Embedded() {
+			continue
+		}
+
 		tagStr := st.Tag(i)
 		tag := reflect.StructTag(tagStr)
 
@@ -81,6 +90,15 @@ func mapStructWithPkgs(named *types.Named, st *types.Struct, pkg *packages.Packa
 
 	for i := 0; i < st.NumFields(); i++ {
 		field := st.Field(i)
+
+		// encoding/json never marshals unexported fields; skip them so internal
+		// fields (e.g. protobuf's state/sizeCache/unknownFields) don't leak into
+		// the schema. Embedded unexported structs still have their exported
+		// fields promoted, so keep those.
+		if !field.Exported() && !field.Embedded() {
+			continue
+		}
+
 		tagStr := st.Tag(i)
 		tag := reflect.StructTag(tagStr)
 
